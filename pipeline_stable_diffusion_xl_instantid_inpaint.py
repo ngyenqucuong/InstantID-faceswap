@@ -346,8 +346,8 @@ class StableDiffusionXLInstantIDInpaintPipeline(StableDiffusionXLControlNetInpai
                 num_images_per_prompt=num_images_per_prompt,
                 device=device,
                 dtype=controlnet.dtype,
-                #crops_coords=crops_coords,
-                #resize_mode=resize_mode,
+                crops_coords=crops_coords,
+                resize_mode=resize_mode,
                 do_classifier_free_guidance=self.do_classifier_free_guidance,
                 guess_mode=guess_mode,
             )
@@ -363,8 +363,8 @@ class StableDiffusionXLInstantIDInpaintPipeline(StableDiffusionXLControlNetInpai
                     num_images_per_prompt=num_images_per_prompt,
                     device=device,
                     dtype=controlnet.dtype,
-                    #crops_coords=crops_coords,
-                    #resize_mode=resize_mode,
+                    crops_coords=crops_coords,
+                    resize_mode=resize_mode,
                     do_classifier_free_guidance=self.do_classifier_free_guidance,
                     guess_mode=guess_mode,
                 )
