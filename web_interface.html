@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InstantID Face Swap API - Web Interface</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .upload-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        .upload-box {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.3s;
+        }
+        .upload-box:hover {
+            border-color: #007bff;
+        }
+        .upload-box.dragover {
+            border-color: #007bff;
+            background-color: #f0f8ff;
+        }
+        .preview-image {
+            max-width: 100%;
+            max-height: 200px;
+            margin-top: 10px;
+            border-radius: 5px;
+        }
+        .parameters {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .param-group {
+            display: flex;
+            flex-direction: column;
+        }
+        label {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #555;
+        }
+        input, textarea, select {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .button:hover {
+            background-color: #0056b3;
+        }
+        .button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 10px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.processing {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .result {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .result-image {
+            max-width: 100%;
+            max-height: 500px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        .hidden {
+            display: none;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background-color: #007bff;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎭 InstantID Face Swap API</h1>
+        
+        <!-- Health Status -->
+        <div id="healthStatus" class="status">Checking API status...</div>
+        
+        <!-- Upload Section -->
+        <div class="upload-section">
+            <div class="upload-box" id="targetUpload">
+                <h3>Target Image (Pose Source)</h3>
+                <p>Click or drag to upload the image with the desired pose/expression</p>
+                <input type="file" id="targetFile" accept="image/*" style="display: none;">
+                <img id="targetPreview" class="preview-image hidden">
+            </div>
+            <div class="upload-box" id="referenceUpload">
+                <h3>Reference Image (Face Source)</h3>
+                <p>Click or drag to upload the image with the face to swap</p>
+                <input type="file" id="referenceFile" accept="image/*" style="display: none;">
+                <img id="referencePreview" class="preview-image hidden">
+            </div>
+        </div>
+        
+        <!-- Parameters -->
+        <div class="parameters">
+            <div class="param-group">
+                <label for="prompt">Prompt (optional):</label>
+                <textarea id="prompt" rows="2" placeholder="high quality portrait, detailed"></textarea>
+            </div>
+            <div class="param-group">
+                <label for="steps">Inference Steps:</label>
+                <input type="number" id="steps" value="4" min="1" max="20">
+            </div>
+            <div class="param-group">
+                <label for="maskStrength">Mask Strength:</label>
+                <input type="range" id="maskStrength" value="0.8" min="0.1" max="1.0" step="0.1">
+                <span id="maskStrengthValue">0.8</span>
+            </div>
+            <div class="param-group">
+                <label for="ipAdapterScale">IP Adapter Scale:</label>
+                <input type="range" id="ipAdapterScale" value="0.7" min="0.1" max="1.0" step="0.1">
+                <span id="ipAdapterScaleValue">0.7</span>
+            </div>
+            <div class="param-group">
+                <label for="controlnetScale">ControlNet Scale:</label>
+                <input type="range" id="controlnetScale" value="0.8" min="0.1" max="1.0" step="0.1">
+                <span id="controlnetScaleValue">0.8</span>
+            </div>
+            <div class="param-group">
+                <label for="guidanceScale">Guidance Scale:</label>
+                <input type="range" id="guidanceScale" value="1.0" min="0.1" max="2.0" step="0.1">
+                <span id="guidanceScaleValue">1.0</span>
+            </div>
+            <div class="param-group">
+                <label for="numImages">Number of Images:</label>
+                <select id="numImages">
+                    <option value="1">1 Image</option>
+                    <option value="2" selected>2 Images</option>
+                    <option value="3">3 Images</option>
+                    <option value="4">4 Images</option>
+                </select>
+            </div>
+        </div>
+        
+        <!-- Process Button -->
+        <button id="processBtn" class="button" disabled>Upload Images to Start</button>
+        
+        <!-- Progress -->
+        <div id="progressContainer" class="hidden">
+            <div class="progress-bar">
+                <div id="progressFill" class="progress-fill"></div>
+            </div>
+            <p id="progressText">Processing...</p>
+        </div>
+        
+        <!-- Status Messages -->
+        <div id="statusMessage" class="hidden"></div>
+        
+        <!-- Result -->
+        <div id="resultContainer" class="result hidden">
+            <h3>Results:</h3>
+            <div id="resultsGrid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0;">
+                <!-- Results will be populated here -->
+            </div>
+            <button id="downloadBtn" class="button">Download All Results</button>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:5000';
+        
+        let targetFile = null;
+        let referenceFile = null;
+        
+        // Check API health on load
+        checkAPIHealth();
+        
+        // Range slider updates
+        setupRangeSliders();
+        
+        // File upload handlers
+        setupFileUploads();
+        
+        // Process button
+        document.getElementById('processBtn').addEventListener('click', processImages);
+        
+        function checkAPIHealth() {
+            fetch(`${API_BASE}/health`)
+                .then(response => response.json())
+                .then(data => {
+                    const statusEl = document.getElementById('healthStatus');
+                    if (data.status === 'healthy' && data.models_loaded) {
+                        statusEl.className = 'status success';
+                        statusEl.textContent = '✅ API is healthy and models are loaded';
+                    } else {
+                        statusEl.className = 'status error';
+                        statusEl.textContent = '❌ API is not ready or models not loaded';
+                    }
+                })
+                .catch(error => {
+                    const statusEl = document.getElementById('healthStatus');
+                    statusEl.className = 'status error';
+                    statusEl.textContent = '❌ Cannot connect to API';
+                });
+        }
+        
+        function setupRangeSliders() {
+            const sliders = ['maskStrength', 'ipAdapterScale', 'controlnetScale', 'guidanceScale'];
+            sliders.forEach(id => {
+                const slider = document.getElementById(id);
+                const valueDisplay = document.getElementById(id + 'Value');
+                slider.addEventListener('input', () => {
+                    valueDisplay.textContent = slider.value;
+                });
+            });
+        }
+        
+        function setupFileUploads() {
+            setupUploadBox('targetUpload', 'targetFile', 'targetPreview', (file) => {
+                targetFile = file;
+                updateProcessButton();
+            });
+            
+            setupUploadBox('referenceUpload', 'referenceFile', 'referencePreview', (file) => {
+                referenceFile = file;
+                updateProcessButton();
+            });
+        }
+        
+        function setupUploadBox(boxId, inputId, previewId, callback) {
+            const box = document.getElementById(boxId);
+            const input = document.getElementById(inputId);
+            const preview = document.getElementById(previewId);
+            
+            box.addEventListener('click', () => input.click());
+            
+            box.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                box.classList.add('dragover');
+            });
+            
+            box.addEventListener('dragleave', () => {
+                box.classList.remove('dragover');
+            });
+            
+            box.addEventListener('drop', (e) => {
+                e.preventDefault();
+                box.classList.remove('dragover');
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    handleFile(files[0], preview, callback);
+                }
+            });
+            
+            input.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    handleFile(e.target.files[0], preview, callback);
+                }
+            });
+        }
+        
+        function handleFile(file, preview, callback) {
+            if (!file.type.startsWith('image/')) {
+                showStatus('Please select an image file', 'error');
+                return;
+            }
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                preview.src = e.target.result;
+                preview.classList.remove('hidden');
+                callback(file);
+            };
+            reader.readAsDataURL(file);
+        }
+        
+        function updateProcessButton() {
+            const btn = document.getElementById('processBtn');
+            if (targetFile && referenceFile) {
+                btn.disabled = false;
+                btn.textContent = 'Start Face Swap';
+            } else {
+                btn.disabled = true;
+                btn.textContent = 'Upload Images to Start';
+            }
+        }
+        
+        function processImages() {
+            if (!targetFile || !referenceFile) return;
+            
+            showProgress(true);
+            hideResult();
+            
+            const formData = new FormData();
+            formData.append('target_image', targetFile);
+            formData.append('reference_image', referenceFile);
+            formData.append('prompt', document.getElementById('prompt').value);
+            formData.append('steps', document.getElementById('steps').value);
+            formData.append('mask_strength', document.getElementById('maskStrength').value);
+            formData.append('ip_adapter_scale', document.getElementById('ipAdapterScale').value);
+            formData.append('num_images', document.getElementById('numImages').value);
+            
+            fetch(`${API_BASE}/face-swap-file`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (response.ok) {
+                    return response.blob();
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            })
+            .then(blob => {
+                // Handle ZIP file containing multiple images
+                showZipResult(blob);
+                showStatus('Face swap completed successfully! Multiple results generated.', 'success');
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showStatus(`Error: ${error.message}`, 'error');
+            })
+            .finally(() => {
+                showProgress(false);
+            });
+        }
+        
+        function showProgress(show) {
+            const container = document.getElementById('progressContainer');
+            if (show) {
+                container.classList.remove('hidden');
+                // Animate progress bar
+                const fill = document.getElementById('progressFill');
+                let width = 0;
+                const interval = setInterval(() => {
+                    width += 2;
+                    fill.style.width = Math.min(width, 90) + '%';
+                    if (width >= 90) clearInterval(interval);
+                }, 100);
+            } else {
+                container.classList.add('hidden');
+                document.getElementById('progressFill').style.width = '0%';
+            }
+        }
+        
+        function showZipResult(zipBlob) {
+            const container = document.getElementById('resultContainer');
+            const resultsGrid = document.getElementById('resultsGrid');
+            const downloadBtn = document.getElementById('downloadBtn');
+            
+            // Clear previous results
+            resultsGrid.innerHTML = '';
+            
+            // Create download URL for the ZIP
+            const zipUrl = URL.createObjectURL(zipBlob);
+            
+            // For demonstration, we'll show a placeholder for each expected image
+            // In a real implementation, you'd extract and display the images from the ZIP
+            const numImages = parseInt(document.getElementById('numImages').value);
+            
+            for (let i = 0; i < numImages; i++) {
+                const resultDiv = document.createElement('div');
+                resultDiv.style.textAlign = 'center';
+                resultDiv.innerHTML = `
+                    <div style="border: 2px dashed #ccc; padding: 20px; border-radius: 8px; background: #f9f9f9;">
+                        <h4>Result ${i + 1}</h4>
+                        <p>📁 Image ${i + 1} is in the downloaded ZIP file</p>
+                        <small>Download the ZIP to view all results</small>
+                    </div>
+                `;
+                resultsGrid.appendChild(resultDiv);
+            }
+            
+            container.classList.remove('hidden');
+            
+            downloadBtn.onclick = () => {
+                const a = document.createElement('a');
+                a.href = zipUrl;
+                a.download = `face_swap_results_${Date.now()}.zip`;
+                a.click();
+            };
+        }
+        
+        function showResult(imageUrl) {
+            // Legacy function for single image results
+            const container = document.getElementById('resultContainer');
+            const resultsGrid = document.getElementById('resultsGrid');
+            const downloadBtn = document.getElementById('downloadBtn');
+            
+            resultsGrid.innerHTML = `
+                <div style="text-align: center;">
+                    <img src="${imageUrl}" class="result-image" style="max-width: 100%; border-radius: 10px;">
+                </div>
+            `;
+            
+            container.classList.remove('hidden');
+            
+            downloadBtn.onclick = () => {
+                const a = document.createElement('a');
+                a.href = imageUrl;
+                a.download = `face_swap_result_${Date.now()}.jpg`;
+                a.click();
+            };
+        }
+        
+        function hideResult() {
+            document.getElementById('resultContainer').classList.add('hidden');
+            document.getElementById('resultsGrid').innerHTML = '';
+        }
+        
+        function showStatus(message, type) {
+            const statusEl = document.getElementById('statusMessage');
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+            statusEl.classList.remove('hidden');
+            
+            if (type === 'success') {
+                setTimeout(() => {
+                    statusEl.classList.add('hidden');
+                }, 5000);
+            }
+        }
+    </script>
+</body>
+</html>
