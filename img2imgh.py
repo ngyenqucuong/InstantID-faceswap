@@ -184,7 +184,7 @@ async def gen_img2img(job_id: str, face_image : Image.Image,pose_image: Image.Im
     face_info = face_analysis_app.get(cv2.cvtColor(np.array(face_image), cv2.COLOR_RGB2BGR))
     face_info = sorted(face_info, key=lambda x:(x['bbox'][2]-x['bbox'][0])*(x['bbox'][3]-x['bbox'][1]))[-1] # only use the maximum face
     face_emb = face_info['embedding']
-    face_kps = draw_kps(face_image, face_info['kps'])
+    # face_kps = draw_kps(face_image, face_info['kps'])
     pose_info = face_analysis_app.get(cv2.cvtColor(np.array(pose_image), cv2.COLOR_RGB2BGR))
     pose_info = sorted(pose_info, key=lambda x:(x['bbox'][2]-x['bbox'][0])*(x['bbox'][3]-x['bbox'][1]))[-1]
     pose_kps_control = draw_kps(pose_image, pose_info['kps'])
@@ -195,7 +195,7 @@ async def gen_img2img(job_id: str, face_image : Image.Image,pose_image: Image.Im
         prompt=request.prompt,
         negative_prompt=negative_prompt,
         image_embeds=face_emb,
-        image=face_kps,
+        image=pose_kps_control,
         control_image=pose_kps_control,
         controlnet_conditioning_scale=request.controlnet_conditioning_scale,
         ip_adapter_scale=request.ip_adapter_scale,
@@ -312,7 +312,7 @@ async def img2img(
         base_img = Image.open(io.BytesIO(await base_image.read())).convert('RGB')
         pose_img = Image.open(io.BytesIO(await pose_image.read())).convert('RGB')
         request = Img2ImgRequest(
-            
+
             prompt=prompt,
             negative_prompt=negative_prompt,
             seed=seed,
