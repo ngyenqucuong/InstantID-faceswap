@@ -179,12 +179,15 @@ def prepare_average_embedding(face_list):
 
 
 
-async def gen_img2img(job_id: str, face_image : Image.Image,request: Img2ImgRequest):
+async def gen_img2img(job_id: str, face_image : Image.Image,pose_image: Image.Image,request: Img2ImgRequest):
     face_image = resize_img(face_image)
     face_info = face_analysis_app.get(cv2.cvtColor(np.array(face_image), cv2.COLOR_RGB2BGR))
     face_info = sorted(face_info, key=lambda x:(x['bbox'][2]-x['bbox'][0])*(x['bbox'][3]-x['bbox'][1]))[-1] # only use the maximum face
     face_emb = face_info['embedding']
     face_kps = draw_kps(face_image, face_info['kps'])
+    pose_info = face_analysis_app.get(cv2.cvtColor(np.array(pose_image), cv2.COLOR_RGB2BGR))
+    pose_info = sorted(pose_info, key=lambda x:(x['bbox'][2]-x['bbox'][0])*(x['bbox'][3]-x['bbox'][1]))[-1]
+    pose_kps_control = draw_kps(pose_image, pose_info['kps'])
     negative_prompt = f"{request.negative_prompt}, blue artifacts, color bleeding, unnatural colors, mask edges, visible seams"
     seed = request.seed if request.seed else torch.randint(0, 2**32, (1,)).item()
     generator = torch.Generator(device='cuda').manual_seed(seed)
@@ -193,7 +196,7 @@ async def gen_img2img(job_id: str, face_image : Image.Image,request: Img2ImgRequ
         negative_prompt=negative_prompt,
         image_embeds=face_emb,
         image=face_kps,
-        control_image=face_kps,
+        control_image=pose_kps_control,
         controlnet_conditioning_scale=request.controlnet_conditioning_scale,
         ip_adapter_scale=request.ip_adapter_scale,
         num_inference_steps=4,
@@ -284,6 +287,7 @@ async def health_check():
 @app.post("/img2img")
 async def img2img(
     base_image: UploadFile = File(...),
+    pose_image: UploadFile = File(...),
     prompt: str = Form(""),
     negative_prompt: str = Form("(lowres, low quality, worst quality:1.2), (text:1.2), watermark, painting, drawing, illustration, glitch, deformed, mutated, cross-eyed, ugly, disfigured"),
     strength: float = Form(0.85),
@@ -306,7 +310,9 @@ async def img2img(
     try:
         # Load images
         base_img = Image.open(io.BytesIO(await base_image.read())).convert('RGB')
+        pose_img = Image.open(io.BytesIO(await pose_image.read())).convert('RGB')
         request = Img2ImgRequest(
+            
             prompt=prompt,
             negative_prompt=negative_prompt,
             seed=seed,
@@ -319,7 +325,7 @@ async def img2img(
         # Start background task
         loop = asyncio.get_event_loop()
         loop.run_in_executor(executor, lambda: asyncio.run(
-            gen_img2img(job_id, base_img, request)
+            gen_img2img(job_id, base_img, pose_img, request)
         ))
         
         return {"job_id": job_id, "status": "pending"}
