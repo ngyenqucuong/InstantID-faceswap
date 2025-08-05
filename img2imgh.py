@@ -33,6 +33,7 @@ from pipeline_stable_diffusion_xl_instantid import StableDiffusionXLInstantIDPip
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+torch.cuda.empty_cache()
 
 
 # Global variables for pipelines
@@ -78,6 +79,7 @@ def initialize_pipelines():
         pipe.cuda()
         pipe.enable_xformers_memory_efficient_attention()
         pipe.enable_vae_slicing()
+        pipe.enable_attention_slicing()
         pipe.load_ip_adapter_instantid(face_adapter)
         pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config, timestep_spacing="trailing")
 
@@ -159,21 +161,6 @@ def resize_img(input_image, max_side=1280, min_side=1024, size=None,
         res[offset_y:offset_y+h_resize_new, offset_x:offset_x+w_resize_new] = np.array(input_image)
         input_image = Image.fromarray(res)
     return input_image
-
-def prepare_average_embedding(face_list):
-    """Prepare face embedding from list of face images"""
-    face_embeddings = []
-    for face_path in face_list:
-        face_image = load_image(face_path)
-        face_image = resize_img(face_image)
-        face_info = face_analysis_app.get(cv2.cvtColor(np.array(face_image), cv2.COLOR_RGB2BGR))
-        face_info = sorted(face_info, key=lambda x:(x['bbox'][2]-x['bbox'][0])*x['bbox'][3]-x['bbox'][1])[-1] # only use the maximum face
-        face_emb = face_info['embedding']
-        face_embeddings.append(face_emb)
-    return np.concatenate(face_embeddings)
-
-    return (mask, image, control_image), (p_x1, p_y1, original_width, original_height)
-
 
 
 
