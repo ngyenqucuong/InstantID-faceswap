@@ -73,6 +73,7 @@ def initialize_pipelines():
             base_model_path,
             controlnet=controlnet,
             torch_dtype=torch.float16,
+            unet=unet
         )
         pipe.cuda()
         pipe.enable_xformers_memory_efficient_attention()
