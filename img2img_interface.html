@@ -185,7 +185,6 @@
     </div>
 
     <script>
-        const API_BASE = 'http://localhost:8888'; // Update with your API base URL
         
         // Global state
         let currentJobs = new Set();
@@ -238,7 +237,7 @@
             }
             
             try {
-                const response = await fetch(`${API_BASE}/img2img`, {
+                const response = await fetch(`/img2img`, {
                     method: 'POST',
                     body: formData
                 });
@@ -262,7 +261,7 @@
             
             const poll = async () => {
                 try {
-                    const response = await fetch(`${API_BASE}/job/${jobId}`);
+                    const response = await fetch(`/job/${jobId}`);
                     const job = await response.json();
                     
                     updateProgressBar(job.progress * 100);
@@ -345,7 +344,7 @@
         
         async function updateJobHistory() {
             try {
-                const response = await fetch(`${API_BASE}/jobs`);
+                const response = await fetch(`/jobs`);
                 const data = await response.json();
                 
                 const jobHistory = document.getElementById('jobHistory');
@@ -397,7 +396,7 @@
         updateJobHistory();
         
         // Check API health on load
-        fetch(`${API_BASE}/health`)
+        fetch(`/health`)
             .then(response => response.json())
             .then(data => {
                 if (!data.pipelines_loaded) {
