@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  instantid-faceswap:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: instantid-faceswap
+    ports:
+      - "8888:8888"
+    volumes:
+      # Mount directories for persistent storage
+      - ./uploads:/app/uploads
+      - ./results:/app/results
+      - ./checkpoints:/app/checkpoints
+      - ./models:/app/models
+      # Optional: Mount for development (uncomment if needed)
+      # - .:/app
+    environment:
+      # CUDA and PyTorch optimizations
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,max_split_size_mb:128
+      - CUDA_LAUNCH_BLOCKING=1
+      - TORCH_USE_CUDA_DSA=1
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/health"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 60s
+    networks:
+      - instantid-network
+
+
+networks:
+  instantid-network:
+    driver: bridge
+
+volumes:
+  # Uncomment if using Redis
+  # redis-data:
+  uploads:
+  results:
+  checkpoints:
+  models:
