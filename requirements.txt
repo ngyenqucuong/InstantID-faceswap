@@ -90,7 +90,7 @@ starlette==0.47.2
 stringzilla==3.12.5
 sympy==1.14.0
 threadpoolctl==3.6.0
-tifffile==2025.6.11
+tifffile==2025.5.10
 tokenizers==0.21.4
 torch==2.7.1
 tqdm==4.67.1
