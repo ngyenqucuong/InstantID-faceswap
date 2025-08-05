@@ -298,14 +298,14 @@
             const resultCard = document.createElement('div');
             resultCard.className = 'result-card bg-white bg-opacity-10 rounded-lg p-4';
             resultCard.innerHTML = `
-                <img src="${API_BASE}${imageUrl}" alt="Generated Image" class="w-full rounded-lg mb-3">
+                <img src="${imageUrl}" alt="Generated Image" class="w-full rounded-lg mb-3">
                 <div class="text-white text-sm mb-2">Seed: ${seedValue}</div>
                 <div class="flex space-x-2">
-                    <button onclick="downloadImage('${API_BASE}${imageUrl}', 'result_${jobId}.png')" 
+                    <button onclick="downloadImage('${imageUrl}', 'result_${jobId}.png')" 
                             class="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg text-sm">
                         📥 Download
                     </button>
-                    <button onclick="useAsBase('${API_BASE}${imageUrl}')" 
+                    <button onclick="useAsBase('${imageUrl}')" 
                             class="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-lg text-sm">
                         🔄 Use as Base
                     </button>
