@@ -339,6 +339,7 @@ async def get_job_status(job_id: str):
         "status": job["status"],
         "progress": job["progress"],
         "result_url": job.get("result_url"),
+        "seed": job.get("metadata", {}).get("seed"),
         "error_message": job.get("error_message"),
         "created_at": job["created_at"].isoformat(),
         "completed_at": job.get("completed_at").isoformat() if job.get("completed_at") else None
