@@ -4,17 +4,15 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional
 import torch
-from diffusers import LCMScheduler
+from diffusers import EulerDiscreteScheduler, UNet2DConditionModel
 from diffusers.models import ControlNetModel
 from diffusers.utils import load_image
 from PIL import Image, ImageDraw
 import cv2
 import numpy as np
-import math
 import io
-import base64
 import json
 import uuid
 import os
@@ -25,6 +23,8 @@ import logging
 from insightface.app import FaceAnalysis
 from huggingface_hub import hf_hub_download
 from contextlib import asynccontextmanager
+from safetensors.torch import load_file
+
 
 
 # Import custom pipeline
@@ -61,12 +61,14 @@ def initialize_pipelines():
         
         # SDXL-Lightning LoRA path
         repo = "ByteDance/SDXL-Lightning"
-        ckpt = "sdxl_lightning_8step_lora.safetensors"
+        ckpt = "sdxl_lightning_4step_unet.safetensors"
         
         # Base model path
         base_model_path = 'stabilityai/stable-diffusion-xl-base-1.0'
         
         logger.info("Loading SDXL base pipeline...")
+        unet = UNet2DConditionModel.from_config(base_model_path, subfolder="unet").to("cuda", torch.float16)
+        unet.load_state_dict(load_file(hf_hub_download(repo, ckpt), device="cuda"))
         pipe = StableDiffusionXLInstantIDPipeline.from_pretrained(
             base_model_path,
             controlnet=controlnet,
@@ -76,9 +78,8 @@ def initialize_pipelines():
         pipe.enable_xformers_memory_efficient_attention()
         pipe.enable_vae_slicing()
         pipe.load_ip_adapter_instantid(face_adapter)
-        pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
-        pipe.load_lora_weights(hf_hub_download(repo, ckpt))
-        pipe.fuse_lora()
+        pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config, timestep_spacing="trailing")
+
         
         
     except Exception as e:
@@ -194,7 +195,7 @@ async def gen_img2img(job_id: str, face_image : Image.Image,request: Img2ImgRequ
         control_image=face_kps,
         controlnet_conditioning_scale=request.controlnet_conditioning_scale,
         ip_adapter_scale=request.ip_adapter_scale,
-        num_inference_steps=8,
+        num_inference_steps=4,
         guidance_scale=request.guidance_scale,
         strength=request.strength,
         generator=generator,
