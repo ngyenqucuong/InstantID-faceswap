@@ -80,7 +80,7 @@ requests==2.32.4
 safetensors==0.5.3
 scikit-image==0.25.2
 scikit-learn==1.7.1
-scipy==1.16.1
+scipy==1.15.3
 sentencepiece==0.2.0
 simsimd==6.5.0
 six==1.17.0
