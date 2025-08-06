@@ -60,10 +60,8 @@ def initialize_pipelines():
         # Base model path
         base_model_path = "runwayml/stable-diffusion-v1-5"
         ip_ckpt = "ip-adapter-faceid_sd15.bin"
-        controlnet_path = f'./checkpoints/ControlNetModel'
-
-        # Load pipeline
-        controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16)
+        controlnet_model_path = "lllyasviel/control_v11f1p_sd15_depth"
+        controlnet = ControlNetModel.from_pretrained(controlnet_model_path, torch_dtype=torch.float16)
         logger.info("Loading SDXL base pipeline...")
         vae_model_path = "stabilityai/sd-vae-ft-mse"
         vae = AutoencoderKL.from_pretrained(vae_model_path).to(dtype=torch.float16)
