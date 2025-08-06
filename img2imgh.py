@@ -72,9 +72,10 @@ def initialize_pipelines():
             torch_dtype=torch.float16,
             unet=unet,
             variant="fp16",
-            scheduler = LCMScheduler.from_config(pipe.scheduler.config)
-        )
+            
 
+        )
+        pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
         # pipe.enable_xformers_memory_efficient_attention()
         # pipe.enable_vae_slicing()
         # pipe.enable_attention_slicing()
