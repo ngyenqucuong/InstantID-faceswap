@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from typing import Optional
 import torch
-from diffusers import LCMScheduler, UNet2DConditionModel ,StableDiffusionXLInpaintPipeline
+from diffusers import DDIMScheduler ,StableDiffusionInpaintPipelineLegacy,AutoencoderKL
 # from diffusers.utils import load_image
 from PIL import Image ,ImageDraw
 import numpy as np
@@ -22,7 +22,7 @@ from insightface.app import FaceAnalysis
 from huggingface_hub import hf_hub_download
 from contextlib import asynccontextmanager
 # from safetensors.torch import load_file
-from ip_adapter.ip_adapter_faceid import IPAdapterFaceID
+from ip_adapter import IPAdapter
 
 
 
@@ -52,28 +52,39 @@ def initialize_pipelines():
         # Load ControlNet
         logger.info("Loading ControlNet...")        
         # SDXL-Lightning LoRA path
-        repo = "tianweiy/DMD2"
-        ckpt = "dmd2_sdxl_4step_unet_fp16.bin"
+        repo = "ByteDance/Hyper-SD"
 
+        ckpt = "Hyper-SD15-4steps-lora.safetensors"
+        image_encoder_path = "models/image_encoder/"
         # Base model path
-        base_model_path = 'stabilityai/stable-diffusion-xl-base-1.0'
-        ip_ckpt = "ip-adapter-faceid-plusv2_sdxl.bin"
+        base_model_path = "runwayml/stable-diffusion-v1-5"
+        ip_ckpt = "ip-adapter_sd15.bin"
         logger.info("Loading SDXL base pipeline...")
-        unet = UNet2DConditionModel.from_config(base_model_path, subfolder="unet").to("cuda", torch.float16)
-        unet.load_state_dict(torch.load(hf_hub_download(repo, ckpt), map_location="cuda"))
-        pipe = StableDiffusionXLInpaintPipeline.from_pretrained(
+        vae_model_path = "stabilityai/sd-vae-ft-mse"
+        vae = AutoencoderKL.from_pretrained(vae_model_path).to(dtype=torch.float16)
+
+        
+        noise_scheduler = DDIMScheduler(
+            num_train_timesteps=1000,
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            clip_sample=False,
+            set_alpha_to_one=False,
+            steps_offset=1,
+        )
+        pipe = StableDiffusionInpaintPipelineLegacy.from_pretrained(
             base_model_path,
             torch_dtype=torch.float16,
-            unet=unet,
+            scheduler=noise_scheduler,
+            vae=vae,
             variant="fp16",
-            
-
+            feature_extractor=None,
+            safety_checker=None
         )
-        pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
-        # pipe.enable_xformers_memory_efficient_attention()
-        # pipe.enable_vae_slicing()
-        # pipe.enable_attention_slicing()
-        ip_model = IPAdapterFaceID(pipe, ip_ckpt, 'cuda')
+        pipe.load_lora_weights(hf_hub_download(repo, ckpt))
+        pipe.fuse_lora()
+        ip_model = IPAdapter(pipe, image_encoder_path, ip_ckpt, 'cuda')
 
 
 
@@ -193,6 +204,8 @@ def detail_face(generated_image, face_image: Image.Image):
 async def gen_img2img(job_id: str, face_image : Image.Image,pose_image: Image.Image,mask_image: Image.Image,request: Img2ImgRequest):
     # negative_prompt = f"{request.negative_prompt}, blue artifacts, color bleeding, unnatural colors, mask edges, visible seams"
     seed = request.seed if request.seed else torch.randint(0, 2**32, (1,)).item()
+    # faces = face_analysis_app.get(face_image)
+
     generated_image = ip_model.generate(pil_image=face_image, num_samples=1, num_inference_steps=4,
                            seed=seed, image=pose_image, mask_image=mask_image, strength=request.strength)[0]
     
