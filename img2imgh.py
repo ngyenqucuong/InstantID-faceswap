@@ -23,6 +23,7 @@ from insightface.app import FaceAnalysis
 from huggingface_hub import hf_hub_download
 from contextlib import asynccontextmanager
 # from safetensors.torch import load_file
+from ip_adapter import IPAdapter
 
 
 
@@ -33,13 +34,12 @@ logger = logging.getLogger(__name__)
 # Global variables for pipelines
 pipe = None
 face_analysis_app = None
-image_encoder = None
-image_processor = None
 executor = ThreadPoolExecutor(max_workers=1)
+ip_model = None
 
 def initialize_pipelines():
     """Initialize the diffusion pipelines with InstantID and SDXL-Lightning - GPU optimized"""
-    global pipe, face_analysis_app,image_encoder,image_processor
+    global pipe, face_analysis_app,ip_model
     
     try:
         # Clear CUDA cache before initialization
@@ -59,11 +59,10 @@ def initialize_pipelines():
         # SDXL-Lightning LoRA path
         repo = "tianweiy/DMD2"
         ckpt = "dmd2_sdxl_4step_unet_fp16.bin"
-        image_processor = CLIPImageProcessor()
 
         # Base model path
         base_model_path = 'stabilityai/stable-diffusion-xl-base-1.0'
-        
+        ip_ckpt = "ip-adapter-faceid-plusv2_sdxl.bin"
         logger.info("Loading SDXL base pipeline...")
         unet = UNet2DConditionModel.from_config(base_model_path, subfolder="unet").to("cuda", torch.float16)
         unet.load_state_dict(torch.load(hf_hub_download(repo, ckpt), map_location="cuda"))
@@ -72,19 +71,15 @@ def initialize_pipelines():
             image_encoder=image_encoder,
             torch_dtype=torch.float16,
             unet=unet,
-            variant="fp16"
+            variant="fp16",
+            scheduler = LCMScheduler.from_config(pipe.scheduler.config)
         )
-        pipe.load_ip_adapter(
-            "h94/IP-Adapter-FaceID",
-            subfolder="",  # For FaceID XL
-            weight_name="ip-adapter-faceid-plusv2_sdxl.bin"  # Use FaceID Plus V2 for better results
-        )
-        pipe.set_ip_adapter_scale(0.7)
-        pipe.to("cuda")
+
         # pipe.enable_xformers_memory_efficient_attention()
         # pipe.enable_vae_slicing()
         # pipe.enable_attention_slicing()
-        pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
+        ip_model = IPAdapter(pipe, "models/image_encoder/", ip_ckpt, 'cuda')
+
 
 
         
@@ -201,25 +196,14 @@ def detail_face(generated_image, face_image: Image.Image):
     return generated_image
 
 async def gen_img2img(job_id: str, face_image : Image.Image,pose_image: Image.Image,mask_image: Image.Image,request: Img2ImgRequest):
-    negative_prompt = f"{request.negative_prompt}, blue artifacts, color bleeding, unnatural colors, mask edges, visible seams"
+    # negative_prompt = f"{request.negative_prompt}, blue artifacts, color bleeding, unnatural colors, mask edges, visible seams"
     seed = request.seed if request.seed else torch.randint(0, 2**32, (1,)).item()
-    reference_face_processed = image_processor(face_image, return_tensors="pt").pixel_values.to("cuda", torch.float16)
-    with torch.no_grad():
-        image_embeds = image_encoder(reference_face_processed).image_embeds
-    generated_image = pipe(
-        prompt=request.prompt,
-        negative_prompt=negative_prompt,
-        ip_adapter_image=face_image,
-        added_cond_kwargs={"image_embeds": image_embeds},
-        image=pose_image,
-        mask_image=mask_image,
-        num_inference_steps=4,
-        guidance_scale=0,
-        strength=request.strength,
-    ).images[0]
+    generated_image = ip_model.generate(pil_image=face_image, num_samples=1, num_inference_steps=4,
+                           seed=seed, image=pose_image, mask_image=mask_image, strength=request.strength)[0]
+    
 
-    if request.detail_face:
-        generated_image = detail_face(generated_image, face_image)
+    # if request.detail_face:
+    #     generated_image = detail_face(generated_image, face_image)
     filename = f"{job_id}_base.png"
     filepath = os.path.join(results_dir, filename)
     generated_image.save(filepath)
