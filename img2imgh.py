@@ -49,11 +49,7 @@ def initialize_pipelines():
         face_analysis_app.prepare(ctx_id=0, det_size=(640, 640))
         
         # Path to InstantID models
-        image_encoder = CLIPVisionModelWithProjection.from_pretrained(
-                "h94/IP-Adapter",  # Giữ nguyên nếu image_encoder chưa tải local, hoặc thay bằng local path nếu có
-                subfolder="models/image_encoder",
-                torch_dtype=torch.float16,
-            ).to("cuda")
+        
         # Load ControlNet
         logger.info("Loading ControlNet...")        
         # SDXL-Lightning LoRA path
@@ -68,7 +64,6 @@ def initialize_pipelines():
         unet.load_state_dict(torch.load(hf_hub_download(repo, ckpt), map_location="cuda"))
         pipe = StableDiffusionXLInpaintPipeline.from_pretrained(
             base_model_path,
-            image_encoder=image_encoder,
             torch_dtype=torch.float16,
             unet=unet,
             variant="fp16",
