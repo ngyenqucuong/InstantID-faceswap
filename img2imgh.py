@@ -22,7 +22,7 @@ from insightface.app import FaceAnalysis
 from huggingface_hub import hf_hub_download
 from contextlib import asynccontextmanager
 # from safetensors.torch import load_file
-from ip_adapter import IPAdapter
+from ip_adapter.ip_adapter_faceid import IPAdapterFaceID
 
 
 
@@ -57,7 +57,7 @@ def initialize_pipelines():
 
         # Base model path
         base_model_path = 'stabilityai/stable-diffusion-xl-base-1.0'
-        ip_ckpt = "models/ip-adapter-plus-face_sdxl_vit-h.bin"
+        ip_ckpt = "ip-adapter-faceid-plusv2_sdxl.bin"
         logger.info("Loading SDXL base pipeline...")
         unet = UNet2DConditionModel.from_config(base_model_path, subfolder="unet").to("cuda", torch.float16)
         unet.load_state_dict(torch.load(hf_hub_download(repo, ckpt), map_location="cuda"))
@@ -73,7 +73,7 @@ def initialize_pipelines():
         # pipe.enable_xformers_memory_efficient_attention()
         # pipe.enable_vae_slicing()
         # pipe.enable_attention_slicing()
-        ip_model = IPAdapter(pipe, "models/image_encoder/", ip_ckpt, 'cuda')
+        ip_model = IPAdapterFaceID(pipe, ip_ckpt, 'cuda')
 
 
 
