@@ -211,7 +211,7 @@ async def gen_img2img(job_id: str, face_image : Image.Image,pose_image: Image.Im
     faceid_embeds = torch.from_numpy(faces[0].normed_embedding).unsqueeze(0)
 
 
-    generated_image = ip_model.generate(pil_image=face_image, num_samples=1, faceid_embeds=faceid_embeds, num_inference_steps=request.num_inference_steps,
+    generated_image = ip_model.generate(prompt=request.prompt, negative_prompt=request.negative_prompt, num_samples=1, faceid_embeds=faceid_embeds, num_inference_steps=request.num_inference_steps,
                            seed=seed, image=pose_image, mask_image=mask_image, strength=request.strength)[0]
     
 
