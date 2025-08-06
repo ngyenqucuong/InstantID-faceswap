@@ -207,7 +207,7 @@ def detail_face(generated_image, face_image: Image.Image):
     return generated_image
 
 async def gen_img2img(job_id: str, face_image : Image.Image,pose_image: Image.Image,mask_image: Image.Image,request: Img2ImgRequest):
-    # negative_prompt = f"{request.negative_prompt}, blue artifacts, color bleeding, unnatural colors, mask edges, visible seams"
+    negative_prompt = f"{request.negative_prompt}, blue artifacts, color bleeding, unnatural colors, mask edges, visible seams, hair"
     seed = request.seed if request.seed else torch.randint(0, 2**32, (1,)).item()
     cv2image = cv2.cvtColor(np.array(face_image), cv2.COLOR_RGB2BGR)
     faces = face_analysis_app.get(cv2image)
@@ -219,7 +219,7 @@ async def gen_img2img(job_id: str, face_image : Image.Image,pose_image: Image.Im
     canny_image = np.concatenate([canny_image, canny_image, canny_image], axis=2)
     canny_image = Image.fromarray(canny_image)
 
-    generated_image = ip_model.generate(prompt=request.prompt, negative_prompt=request.negative_prompt, num_samples=1, faceid_embeds=faceid_embeds, num_inference_steps=request.num_inference_steps,
+    generated_image = ip_model.generate(prompt=request.prompt, negative_prompt=negative_prompt, num_samples=1, faceid_embeds=faceid_embeds, num_inference_steps=request.num_inference_steps,
                            seed=seed, image=pose_image,control_image=canny_image, mask_image=mask_image, strength=request.strength)[0]
     
 
