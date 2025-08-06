@@ -143,28 +143,28 @@ jobs = {}
 results_dir = "results"
 os.makedirs(results_dir, exist_ok=True)
 
-def resize_img(input_image, max_side=1280, min_side=1024, size=None, 
-               pad_to_max_side=False, mode=Image.BILINEAR, base_pixel_number=64):
+# def resize_img(input_image, max_side=1280, min_side=1024, size=None, 
+#                pad_to_max_side=False, mode=Image.BILINEAR, base_pixel_number=64):
 
-    w, h = input_image.size
-    if size is not None:
-        w_resize_new, h_resize_new = size
-    else:
-        ratio = min_side / min(h, w)
-        w, h = round(ratio*w), round(ratio*h)
-        ratio = max_side / max(h, w)
-        input_image = input_image.resize([round(ratio*w), round(ratio*h)], mode)
-        w_resize_new = (round(ratio * w) // base_pixel_number) * base_pixel_number
-        h_resize_new = (round(ratio * h) // base_pixel_number) * base_pixel_number
-    input_image = input_image.resize([w_resize_new, h_resize_new], mode)
+#     w, h = input_image.size
+#     if size is not None:
+#         w_resize_new, h_resize_new = size
+#     else:
+#         ratio = min_side / min(h, w)
+#         w, h = round(ratio*w), round(ratio*h)
+#         ratio = max_side / max(h, w)
+#         input_image = input_image.resize([round(ratio*w), round(ratio*h)], mode)
+#         w_resize_new = (round(ratio * w) // base_pixel_number) * base_pixel_number
+#         h_resize_new = (round(ratio * h) // base_pixel_number) * base_pixel_number
+#     input_image = input_image.resize([w_resize_new, h_resize_new], mode)
 
-    if pad_to_max_side:
-        res = np.ones([max_side, max_side, 3], dtype=np.uint8) * 255
-        offset_x = (max_side - w_resize_new) // 2
-        offset_y = (max_side - h_resize_new) // 2
-        res[offset_y:offset_y+h_resize_new, offset_x:offset_x+w_resize_new] = np.array(input_image)
-        input_image = Image.fromarray(res)
-    return input_image
+#     if pad_to_max_side:
+#         res = np.ones([max_side, max_side, 3], dtype=np.uint8) * 255
+#         offset_x = (max_side - w_resize_new) // 2
+#         offset_y = (max_side - h_resize_new) // 2
+#         res[offset_y:offset_y+h_resize_new, offset_x:offset_x+w_resize_new] = np.array(input_image)
+#         input_image = Image.fromarray(res)
+#     return input_image
 
 
 
@@ -209,7 +209,6 @@ async def gen_img2img(job_id: str, face_image : Image.Image,pose_image: Image.Im
         image=pose_image,
         mask_image=mask_image,
         num_inference_steps=4,
-        timesteps=[999, 749, 499, 249],
         guidance_scale=0,
         strength=request.strength,
     ).images[0]
