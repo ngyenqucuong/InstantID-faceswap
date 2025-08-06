@@ -209,7 +209,7 @@ async def gen_img2img(job_id: str, face_image : Image.Image,pose_image: Image.Im
         image=pose_image,
         mask_image=mask_image,
         num_inference_steps=4,
-        timesteps=[999, 749, 499, 249]
+        timesteps=[999, 749, 499, 249],
         guidance_scale=0,
         strength=request.strength,
     ).images[0]
