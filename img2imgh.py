@@ -85,7 +85,7 @@ def initialize_pipelines():
         )
         # pipe.load_lora_weights(hf_hub_download(repo, ckpt))
         # pipe.fuse_lora()
-        ip_model = IPAdapterFaceID(pipe, image_encoder_path, ip_ckpt, 'cuda')
+        ip_model = IPAdapterFaceID(pipe, ip_ckpt, 'cuda')
 
 
 
