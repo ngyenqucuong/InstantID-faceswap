@@ -332,7 +332,7 @@ async def img2img(
             ip_adapter_scale=ip_adapter_scale,
             controlnet_conditioning_scale=controlnet_conditioning_scale,
             guidance_scale=guidance_scale,
-            detail_face=detail_face
+            detail_face=detail_face,
             num_inference_steps=num_inference_steps
             
         )
