@@ -24,7 +24,7 @@ from contextlib import asynccontextmanager
 # from safetensors.torch import load_file
 from ip_adapter.ip_adapter_faceid import IPAdapterFaceID
 
-
+import cv2
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -206,7 +206,8 @@ def detail_face(generated_image, face_image: Image.Image):
 async def gen_img2img(job_id: str, face_image : Image.Image,pose_image: Image.Image,mask_image: Image.Image,request: Img2ImgRequest):
     # negative_prompt = f"{request.negative_prompt}, blue artifacts, color bleeding, unnatural colors, mask edges, visible seams"
     seed = request.seed if request.seed else torch.randint(0, 2**32, (1,)).item()
-    faces = face_analysis_app.get(face_image)
+    cv2image = cv2.cvtColor(np.array(face_image), cv2.COLOR_RGB2BGR)
+    faces = face_analysis_app.get(cv2image)
     faceid_embeds = torch.from_numpy(faces[0].normed_embedding).unsqueeze(0)
 
 
