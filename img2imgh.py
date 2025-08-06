@@ -29,8 +29,6 @@ from contextlib import asynccontextmanager
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-torch.cuda.empty_cache()
-
 
 # Global variables for pipelines
 pipe = None
