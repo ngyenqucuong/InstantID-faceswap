@@ -57,7 +57,7 @@ def initialize_pipelines():
 
         # Base model path
         base_model_path = 'stabilityai/stable-diffusion-xl-base-1.0'
-        ip_ckpt = "./models/ip-adapter-faceid-plusv2_sdxl.bin"
+        ip_ckpt = "models/ip-adapter-plus-face_sdxl_vit-h.bin"
         logger.info("Loading SDXL base pipeline...")
         unet = UNet2DConditionModel.from_config(base_model_path, subfolder="unet").to("cuda", torch.float16)
         unet.load_state_dict(torch.load(hf_hub_download(repo, ckpt), map_location="cuda"))
