@@ -7,7 +7,8 @@ from pydantic import BaseModel
 from typing import Optional
 import torch
 from diffusers import DDIMScheduler ,StableDiffusionInpaintPipelineLegacy,AutoencoderKL
-# from diffusers.utils import load_image
+from diffusers.models import ControlNetModel
+
 from PIL import Image ,ImageDraw
 import numpy as np
 import io
@@ -59,7 +60,10 @@ def initialize_pipelines():
         # Base model path
         base_model_path = "runwayml/stable-diffusion-v1-5"
         ip_ckpt = "ip-adapter-faceid_sd15.bin"
+        controlnet_path = f'./checkpoints/ControlNetModel'
 
+        # Load pipeline
+        controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16)
         logger.info("Loading SDXL base pipeline...")
         vae_model_path = "stabilityai/sd-vae-ft-mse"
         vae = AutoencoderKL.from_pretrained(vae_model_path).to(dtype=torch.float16)
@@ -81,6 +85,7 @@ def initialize_pipelines():
             vae=vae,
             variant="fp16",
             feature_extractor=None,
+            controlnet=controlnet,
             safety_checker=None
         )
         # pipe.load_lora_weights(hf_hub_download(repo, ckpt))
@@ -209,10 +214,15 @@ async def gen_img2img(job_id: str, face_image : Image.Image,pose_image: Image.Im
     cv2image = cv2.cvtColor(np.array(face_image), cv2.COLOR_RGB2BGR)
     faces = face_analysis_app.get(cv2image)
     faceid_embeds = torch.from_numpy(faces[0].normed_embedding).unsqueeze(0)
+    pose_image_cv2  = np.array(pose_image)
 
+    canny_image = cv2.Canny(pose_image_cv2, 100, 200)
+    canny_image = canny_image[:, :, None]
+    canny_image = np.concatenate([canny_image, canny_image, canny_image], axis=2)
+    canny_image = Image.fromarray(canny_image)
 
     generated_image = ip_model.generate(prompt=request.prompt, negative_prompt=request.negative_prompt, num_samples=1, faceid_embeds=faceid_embeds, num_inference_steps=request.num_inference_steps,
-                           seed=seed, image=pose_image, mask_image=mask_image, strength=request.strength)[0]
+                           seed=seed, image=pose_image,control_image=canny_image, mask_image=mask_image, strength=request.strength)[0]
     
 
     # if request.detail_face:
