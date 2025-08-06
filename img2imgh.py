@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 
 from pydantic import BaseModel
-from transformers import CLIPVisionModelWithProjection
+from transformers import CLIPVisionModelWithProjection, CLIPImageProcessor
 from typing import Optional
 import torch
 from diffusers import LCMScheduler, UNet2DConditionModel ,StableDiffusionXLInpaintPipeline
@@ -33,11 +33,13 @@ logger = logging.getLogger(__name__)
 # Global variables for pipelines
 pipe = None
 face_analysis_app = None
+image_encoder = None
+image_processor = None
 executor = ThreadPoolExecutor(max_workers=1)
 
 def initialize_pipelines():
     """Initialize the diffusion pipelines with InstantID and SDXL-Lightning - GPU optimized"""
-    global pipe, face_analysis_app
+    global pipe, face_analysis_app,image_encoder,image_processor
     
     try:
         # Clear CUDA cache before initialization
@@ -57,7 +59,8 @@ def initialize_pipelines():
         # SDXL-Lightning LoRA path
         repo = "tianweiy/DMD2"
         ckpt = "dmd2_sdxl_4step_unet_fp16.bin"
-        
+        image_processor = CLIPImageProcessor()
+
         # Base model path
         base_model_path = 'stabilityai/stable-diffusion-xl-base-1.0'
         
@@ -200,11 +203,14 @@ def detail_face(generated_image, face_image: Image.Image):
 async def gen_img2img(job_id: str, face_image : Image.Image,pose_image: Image.Image,mask_image: Image.Image,request: Img2ImgRequest):
     negative_prompt = f"{request.negative_prompt}, blue artifacts, color bleeding, unnatural colors, mask edges, visible seams"
     seed = request.seed if request.seed else torch.randint(0, 2**32, (1,)).item()
-    
+    reference_face_processed = image_processor(face_image, return_tensors="pt").pixel_values.to("cuda", torch.float16)
+    with torch.no_grad():
+        image_embeds = image_encoder(reference_face_processed).image_embeds
     generated_image = pipe(
         prompt=request.prompt,
         negative_prompt=negative_prompt,
-        image_embeds=face_image,
+        ip_adapter_image=face_image,
+        added_cond_kwargs={"image_embeds": image_embeds},
         image=pose_image,
         mask_image=mask_image,
         num_inference_steps=4,
