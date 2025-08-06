@@ -4,13 +4,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 
 from pydantic import BaseModel
+from transformers import CLIPVisionModelWithProjection
 from typing import Optional
 import torch
-from diffusers import EulerDiscreteScheduler, UNet2DConditionModel
-from diffusers.models import ControlNetModel
-from diffusers.utils import load_image
-from PIL import Image, ImageDraw
-import cv2
+from diffusers import LCMScheduler, UNet2DConditionModel ,StableDiffusionXLInpaintPipeline
+# from diffusers.utils import load_image
+from PIL import Image ,ImageDraw
 import numpy as np
 import io
 import json
@@ -23,12 +22,9 @@ import logging
 from insightface.app import FaceAnalysis
 from huggingface_hub import hf_hub_download
 from contextlib import asynccontextmanager
-from safetensors.torch import load_file
+# from safetensors.torch import load_file
 
 
-
-# Import custom pipeline
-from pipeline_stable_diffusion_xl_instantid import StableDiffusionXLInstantIDPipeline, draw_kps
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -49,39 +45,46 @@ def initialize_pipelines():
         # Clear CUDA cache before initialization
        
         logger.info("Loading face analysis model...")
-        face_analysis_app = FaceAnalysis(name='antelopev2', root='./', providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
+        face_analysis_app = FaceAnalysis(name='buffalo_l', providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
         face_analysis_app.prepare(ctx_id=0, det_size=(640, 640))
         
         # Path to InstantID models
-        face_adapter = './checkpoints/ip-adapter.bin'
-        controlnet_path = './checkpoints/ControlNetModel'
-        
+        image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+                "h94/IP-Adapter",  # Giữ nguyên nếu image_encoder chưa tải local, hoặc thay bằng local path nếu có
+                subfolder="models/image_encoder",
+                torch_dtype=torch.float16,
+            ).to("cuda")
         # Load ControlNet
-        logger.info("Loading ControlNet...")
-        controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16)
-        
+        logger.info("Loading ControlNet...")        
         # SDXL-Lightning LoRA path
-        repo = "ByteDance/SDXL-Lightning"
-        ckpt = "sdxl_lightning_4step_unet.safetensors"
+        repo = "tianweiy/DMD2"
+        ckpt = "dmd2_sdxl_4step_unet_fp16.bin"
         
         # Base model path
         base_model_path = 'stabilityai/stable-diffusion-xl-base-1.0'
         
         logger.info("Loading SDXL base pipeline...")
         unet = UNet2DConditionModel.from_config(base_model_path, subfolder="unet").to("cuda", torch.float16)
-        unet.load_state_dict(load_file(hf_hub_download(repo, ckpt), device="cuda"))
-        pipe = StableDiffusionXLInstantIDPipeline.from_pretrained(
+        unet.load_state_dict(torch.load(hf_hub_download(repo, ckpt), map_location="cuda"))
+        pipe = StableDiffusionXLInpaintPipeline.from_pretrained(
             base_model_path,
-            controlnet=controlnet,
+            image_encoder=image_encoder,
             torch_dtype=torch.float16,
-            unet=unet
+            unet=unet,
+            variant="fp16"
         )
+        pipe.load_ip_adapter(
+            "h94/IP-Adapter-FaceID",
+            subfolder="",  # For FaceID XL
+            weight_name="ip-adapter-faceid-plusv2_sdxl.bin"  # Use FaceID Plus V2 for better results
+        )
+        pipe.set_ip_adapter_scale(0.7)
         pipe.cuda()
         pipe.enable_xformers_memory_efficient_attention()
         pipe.enable_vae_slicing()
         pipe.enable_attention_slicing()
-        pipe.load_ip_adapter_instantid(face_adapter)
-        pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config, timestep_spacing="trailing")
+        pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
+
 
         
         
@@ -124,6 +127,7 @@ class Img2ImgRequest(BaseModel):
     ip_adapter_scale: float = 0.8  # Lower for InstantID
     controlnet_conditioning_scale: float = 0.8
     guidance_scale: float = 0.0  # Zero for LCM
+    detail_face: bool = False  # Whether to refine face details
 
 class JobStatus(BaseModel):
     job_id: str
@@ -164,36 +168,56 @@ def resize_img(input_image, max_side=1280, min_side=1024, size=None,
 
 
 
+def detail_face(generated_image, face_image: Image.Image):
+    img_array = np.array(generated_image)[:, :, ::-1]  # Convert PIL to BGR for InsightFace
+    faces = face_analysis_app.get(img_array)
+    if len(faces) > 0:
+        for face in faces:
+            bbox = face.bbox.astype(int)
+            x1, y1, x2, y2 = bbox
+            
+            # Crop face area (convert back to RGB for PIL)
+            # face_crop = generated_image.crop((x1, y1, x2, y2))
+            
+            # Create mask for face area
+            face_mask = Image.new("L", generated_image.size, 0)
+            face_mask_draw = ImageDraw.Draw(face_mask)
+            face_mask_draw.rectangle((x1, y1, x2, y2), fill=255)
+            
+            # Refine face with inpainting (higher steps for detail)
+            refined_face = pipe(
+                prompt="high detail face, sharp eyes, smooth skin",  # Detail-focused prompt
+                image=generated_image,
+                mask_image=face_mask,
+                ip_adapter_image=face_image,  # Keep face consistency
+                num_inference_steps=10,  # More steps for detailer
+                guidance_scale=7.5,
+                strength=0.5
+            ).images[0]
+            
+            # Paste refined face back
+            generated_image.paste(refined_face.crop((x1, y1, x2, y2)), (x1, y1))
+    return generated_image
 
-
-async def gen_img2img(job_id: str, face_image : Image.Image,pose_image: Image.Image,request: Img2ImgRequest):
-    face_image = resize_img(face_image)
-    face_info = face_analysis_app.get(cv2.cvtColor(np.array(face_image), cv2.COLOR_RGB2BGR))
-    face_info = sorted(face_info, key=lambda x:(x['bbox'][2]-x['bbox'][0])*(x['bbox'][3]-x['bbox'][1]))[-1] # only use the maximum face
-    face_emb = face_info['embedding']
-    # face_kps = draw_kps(face_image, face_info['kps'])
-    pose_info = face_analysis_app.get(cv2.cvtColor(np.array(pose_image), cv2.COLOR_RGB2BGR))
-    pose_info = sorted(pose_info, key=lambda x:(x['bbox'][2]-x['bbox'][0])*(x['bbox'][3]-x['bbox'][1]))[-1]
-    pose_kps_control = draw_kps(pose_image, pose_info['kps'])
+async def gen_img2img(job_id: str, face_image : Image.Image,pose_image: Image.Image,mask_image: Image.Image,request: Img2ImgRequest):
     negative_prompt = f"{request.negative_prompt}, blue artifacts, color bleeding, unnatural colors, mask edges, visible seams"
     seed = request.seed if request.seed else torch.randint(0, 2**32, (1,)).item()
-    generator = torch.Generator(device='cuda').manual_seed(seed)
-    image = pipe(
+    generated_image = pipe(
         prompt=request.prompt,
         negative_prompt=negative_prompt,
-        image_embeds=face_emb,
-        image=pose_kps_control,
-        control_image=pose_kps_control,
-        controlnet_conditioning_scale=request.controlnet_conditioning_scale,
-        ip_adapter_scale=request.ip_adapter_scale,
+        ip_adapter_image=face_image,
+        image=pose_image,
+        mask_image=mask_image,
         num_inference_steps=4,
-        guidance_scale=request.guidance_scale,
+        guidance_scale=0,
         strength=request.strength,
-        generator=generator,
     ).images[0]
+
+    if request.detail_face:
+        generated_image = detail_face(generated_image, face_image)
     filename = f"{job_id}_base.png"
     filepath = os.path.join(results_dir, filename)
-    image.save(filepath)
+    generated_image.save(filepath)
         
     metadata = {
         "job_id": job_id,
@@ -275,11 +299,13 @@ async def health_check():
 async def img2img(
     base_image: UploadFile = File(...),
     pose_image: UploadFile = File(...),
+    mask_image: UploadFile = File(...),
     prompt: str = Form(""),
     negative_prompt: str = Form("(lowres, low quality, worst quality:1.2), (text:1.2), watermark, painting, drawing, illustration, glitch, deformed, mutated, cross-eyed, ugly, disfigured"),
     strength: float = Form(0.85),
     ip_adapter_scale: float = Form(0.8),  # Lower for InstantID
     controlnet_conditioning_scale: float = Form(0.8),
+    detail_face: bool = Form(False),
     guidance_scale: float = Form(0),  # Zero for LCM
     seed: Optional[int] = Form(None),
     
@@ -298,6 +324,7 @@ async def img2img(
         # Load images
         base_img = Image.open(io.BytesIO(await base_image.read())).convert('RGB')
         pose_img = Image.open(io.BytesIO(await pose_image.read())).convert('RGB')
+        mask_img = Image.open(io.BytesIO(await mask_image.read())).convert('RGB')
         request = Img2ImgRequest(
 
             prompt=prompt,
@@ -307,12 +334,13 @@ async def img2img(
             ip_adapter_scale=ip_adapter_scale,
             controlnet_conditioning_scale=controlnet_conditioning_scale,
             guidance_scale=guidance_scale,
+            detail_face=detail_face
            
         )
         # Start background task
         loop = asyncio.get_event_loop()
         loop.run_in_executor(executor, lambda: asyncio.run(
-            gen_img2img(job_id, base_img, pose_img, request)
+            gen_img2img(job_id, base_img, pose_img, mask_img, request)
         ))
         
         return {"job_id": job_id, "status": "pending"}
