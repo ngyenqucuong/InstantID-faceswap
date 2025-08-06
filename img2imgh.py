@@ -19,7 +19,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import logging
 from insightface.app import FaceAnalysis
-from huggingface_hub import hf_hub_download
+# from huggingface_hub import hf_hub_download
 from contextlib import asynccontextmanager
 # from safetensors.torch import load_file
 from ip_adapter import IPAdapter
@@ -53,8 +53,8 @@ def initialize_pipelines():
         logger.info("Loading ControlNet...")        
         # SDXL-Lightning LoRA path
         repo = "ByteDance/Hyper-SD"
-
-        ckpt = "Hyper-SD15-4steps-lora.safetensors"
+        # Load SDXL-Lightning LoRA
+        ckpt = "Hyper-SD15-4steps-lora.safetensors" 
         image_encoder_path = "models/image_encoder/"
         # Base model path
         base_model_path = "runwayml/stable-diffusion-v1-5"
@@ -82,8 +82,8 @@ def initialize_pipelines():
             feature_extractor=None,
             safety_checker=None
         )
-        pipe.load_lora_weights(hf_hub_download(repo, ckpt))
-        pipe.fuse_lora()
+        # pipe.load_lora_weights(hf_hub_download(repo, ckpt))
+        # pipe.fuse_lora()
         ip_model = IPAdapter(pipe, image_encoder_path, ip_ckpt, 'cuda')
 
 
@@ -130,6 +130,7 @@ class Img2ImgRequest(BaseModel):
     controlnet_conditioning_scale: float = 0.8
     guidance_scale: float = 0.0  # Zero for LCM
     detail_face: bool = False  # Whether to refine face details
+    num_inference_steps: int = 50  # Number of inference steps
 
 class JobStatus(BaseModel):
     job_id: str
@@ -206,7 +207,7 @@ async def gen_img2img(job_id: str, face_image : Image.Image,pose_image: Image.Im
     seed = request.seed if request.seed else torch.randint(0, 2**32, (1,)).item()
     # faces = face_analysis_app.get(face_image)
 
-    generated_image = ip_model.generate(pil_image=face_image, num_samples=1, num_inference_steps=4,
+    generated_image = ip_model.generate(pil_image=face_image, num_samples=1, num_inference_steps=request.num_inference_steps,
                            seed=seed, image=pose_image, mask_image=mask_image, strength=request.strength)[0]
     
 
@@ -302,6 +303,7 @@ async def img2img(
     strength: float = Form(0.85),
     ip_adapter_scale: float = Form(0.8),  # Lower for InstantID
     controlnet_conditioning_scale: float = Form(0.8),
+    num_inference_steps: int = Form(50),  # Number of inference steps
     detail_face: bool = Form(False),
     guidance_scale: float = Form(0),  # Zero for LCM
     seed: Optional[int] = Form(None),
@@ -331,6 +333,7 @@ async def img2img(
             controlnet_conditioning_scale=controlnet_conditioning_scale,
             guidance_scale=guidance_scale,
             detail_face=detail_face
+            num_inference_steps=num_inference_steps
             
         )
         # Start background task

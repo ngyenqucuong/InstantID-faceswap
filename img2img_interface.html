@@ -155,7 +155,13 @@
                         <label class="block text-white font-medium mb-2">Guidance Scale</label>
                         <input type="range" id="guidanceScale" min="0" max="10" step="0.5" value="0" 
                                class="w-full" oninput="document.getElementById('guidanceScaleValue').textContent = this.value">
-                        <span id="guidanceScaleValue" class="text-white text-sm">5</span>
+                        <span id="guidanceScaleValue" class="text-white text-sm">0</span>
+                    </div>
+                    <div>
+                        <label class="block text-white font-medium mb-2">Num Step</label>
+                        <input type="range" id="numStep" min="0" max="50" step="1" value="50" 
+                               class="w-full" oninput="document.getElementById('numStepValue').textContent = this.value">
+                        <span id="numStepValue" class="text-white text-sm">50</span>
                     </div>
                 </div>
                 <!-- Additional Parameters -->
@@ -303,6 +309,7 @@
             formData.append('prompt', prompt);
             formData.append('ip_adapter_scale', document.getElementById('adapterScale').value);
             formData.append('strength', document.getElementById('Strength').value);
+            formData.append('num_inference_steps', document.getElementById('numStep').value);
             formData.append('controlnet_conditioning_scale', document.getElementById('controlnetScale').value);
             formData.append('guidance_scale', document.getElementById('guidanceScale').value);
             formData.append('detail_face', document.getElementById('detailFace').checked);
