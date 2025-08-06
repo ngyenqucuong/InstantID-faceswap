@@ -79,10 +79,10 @@ def initialize_pipelines():
             weight_name="ip-adapter-faceid-plusv2_sdxl.bin"  # Use FaceID Plus V2 for better results
         )
         pipe.set_ip_adapter_scale(0.7)
-        pipe.cuda()
-        pipe.enable_xformers_memory_efficient_attention()
-        pipe.enable_vae_slicing()
-        pipe.enable_attention_slicing()
+        pipe.to("cuda")
+        # pipe.enable_xformers_memory_efficient_attention()
+        # pipe.enable_vae_slicing()
+        # pipe.enable_attention_slicing()
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
 
