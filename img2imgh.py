@@ -200,10 +200,11 @@ def detail_face(generated_image, face_image: Image.Image):
 async def gen_img2img(job_id: str, face_image : Image.Image,pose_image: Image.Image,mask_image: Image.Image,request: Img2ImgRequest):
     negative_prompt = f"{request.negative_prompt}, blue artifacts, color bleeding, unnatural colors, mask edges, visible seams"
     seed = request.seed if request.seed else torch.randint(0, 2**32, (1,)).item()
+    
     generated_image = pipe(
         prompt=request.prompt,
         negative_prompt=negative_prompt,
-        ip_adapter_image=face_image,
+        image_embeds=face_image,
         image=pose_image,
         mask_image=mask_image,
         num_inference_steps=4,
@@ -317,31 +318,35 @@ async def img2img(
         "created_at": datetime.now(),
         "type": "head_swap"
     }
-    
+    try:
     # Load images
-    base_img = Image.open(io.BytesIO(await base_image.read())).convert('RGB')
-    pose_img = Image.open(io.BytesIO(await pose_image.read())).convert('RGB')
-    mask_img = Image.open(io.BytesIO(await mask_image.read())).convert('RGB')
-    request = Img2ImgRequest(
+        base_img = Image.open(io.BytesIO(await base_image.read())).convert('RGB')
+        pose_img = Image.open(io.BytesIO(await pose_image.read())).convert('RGB')
+        mask_img = Image.open(io.BytesIO(await mask_image.read())).convert('RGB')
+        request = Img2ImgRequest(
 
-        prompt=prompt,
-        negative_prompt=negative_prompt,
-        seed=seed,
-        strength=strength,
-        ip_adapter_scale=ip_adapter_scale,
-        controlnet_conditioning_scale=controlnet_conditioning_scale,
-        guidance_scale=guidance_scale,
-        detail_face=detail_face
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            seed=seed,
+            strength=strength,
+            ip_adapter_scale=ip_adapter_scale,
+            controlnet_conditioning_scale=controlnet_conditioning_scale,
+            guidance_scale=guidance_scale,
+            detail_face=detail_face
+            
+        )
+        # Start background task
+        loop = asyncio.get_event_loop()
+        loop.run_in_executor(executor, lambda: asyncio.run(
+            gen_img2img(job_id, base_img, pose_img, mask_img, request)
+        ))
         
-    )
-    # Start background task
-    loop = asyncio.get_event_loop()
-    loop.run_in_executor(executor, lambda: asyncio.run(
-        gen_img2img(job_id, base_img, pose_img, mask_img, request)
-    ))
-    
-    return {"job_id": job_id, "status": "pending"}
-
+        return {"job_id": job_id, "status": "pending"}
+    except Exception as e:
+        logger.error(f"Error processing img2img request: {e}")
+        jobs[job_id]["status"] = "failed"
+        jobs[job_id]["error_message"] = str(e)
+        return {"job_id": job_id, "status": "failed", "error_message": str(e)}
 
 
 @app.get("/job/{job_id}")
