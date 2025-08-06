@@ -321,34 +321,30 @@ async def img2img(
         "type": "head_swap"
     }
     
-    try:
-        # Load images
-        base_img = Image.open(io.BytesIO(await base_image.read())).convert('RGB')
-        pose_img = Image.open(io.BytesIO(await pose_image.read())).convert('RGB')
-        mask_img = Image.open(io.BytesIO(await mask_image.read())).convert('RGB')
-        request = Img2ImgRequest(
+    # Load images
+    base_img = Image.open(io.BytesIO(await base_image.read())).convert('RGB')
+    pose_img = Image.open(io.BytesIO(await pose_image.read())).convert('RGB')
+    mask_img = Image.open(io.BytesIO(await mask_image.read())).convert('RGB')
+    request = Img2ImgRequest(
 
-            prompt=prompt,
-            negative_prompt=negative_prompt,
-            seed=seed,
-            strength=strength,
-            ip_adapter_scale=ip_adapter_scale,
-            controlnet_conditioning_scale=controlnet_conditioning_scale,
-            guidance_scale=guidance_scale,
-            detail_face=detail_face
-           
-        )
-        # Start background task
-        loop = asyncio.get_event_loop()
-        loop.run_in_executor(executor, lambda: asyncio.run(
-            gen_img2img(job_id, base_img, pose_img, mask_img, request)
-        ))
+        prompt=prompt,
+        negative_prompt=negative_prompt,
+        seed=seed,
+        strength=strength,
+        ip_adapter_scale=ip_adapter_scale,
+        controlnet_conditioning_scale=controlnet_conditioning_scale,
+        guidance_scale=guidance_scale,
+        detail_face=detail_face
         
-        return {"job_id": job_id, "status": "pending"}
-    except Exception as e:
-        jobs[job_id]["status"] = "failed"
-        jobs[job_id]["error_message"] = str(e)
-        raise HTTPException(status_code=400, detail=str(e))
+    )
+    # Start background task
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(executor, lambda: asyncio.run(
+        gen_img2img(job_id, base_img, pose_img, mask_img, request)
+    ))
+    
+    return {"job_id": job_id, "status": "pending"}
+
 
 
 @app.get("/job/{job_id}")
