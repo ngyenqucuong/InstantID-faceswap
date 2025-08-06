@@ -22,7 +22,7 @@ from insightface.app import FaceAnalysis
 # from huggingface_hub import hf_hub_download
 from contextlib import asynccontextmanager
 # from safetensors.torch import load_file
-from ip_adapter import IPAdapter
+from ip_adapter.ip_adapter_faceid import IPAdapterFaceID
 
 
 
@@ -58,7 +58,8 @@ def initialize_pipelines():
         image_encoder_path = "models/image_encoder/"
         # Base model path
         base_model_path = "runwayml/stable-diffusion-v1-5"
-        ip_ckpt = "ip-adapter_sd15.bin"
+        ip_ckpt = "ip-adapter-faceid_sd15.bin"
+
         logger.info("Loading SDXL base pipeline...")
         vae_model_path = "stabilityai/sd-vae-ft-mse"
         vae = AutoencoderKL.from_pretrained(vae_model_path).to(dtype=torch.float16)
@@ -84,7 +85,7 @@ def initialize_pipelines():
         )
         # pipe.load_lora_weights(hf_hub_download(repo, ckpt))
         # pipe.fuse_lora()
-        ip_model = IPAdapter(pipe, image_encoder_path, ip_ckpt, 'cuda')
+        ip_model = IPAdapterFaceID(pipe, image_encoder_path, ip_ckpt, 'cuda')
 
 
 
