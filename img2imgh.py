@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from typing import Optional
 import torch
-from diffusers import DDIMScheduler ,StableDiffusionInpaintPipelineLegacy,AutoencoderKL
+from diffusers import DDIMScheduler ,StableDiffusionControlNetInpaintPipeline,AutoencoderKL
 from diffusers.models import ControlNetModel
 
 from PIL import Image ,ImageDraw
@@ -78,7 +78,7 @@ def initialize_pipelines():
             set_alpha_to_one=False,
             steps_offset=1,
         )
-        pipe = StableDiffusionInpaintPipelineLegacy.from_pretrained(
+        pipe = StableDiffusionControlNetInpaintPipeline.from_pretrained(
             base_model_path,
             torch_dtype=torch.float16,
             scheduler=noise_scheduler,
