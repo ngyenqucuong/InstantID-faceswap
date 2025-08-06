@@ -206,7 +206,6 @@ async def gen_img2img(job_id: str, face_image : Image.Image,pose_image: Image.Im
     # negative_prompt = f"{request.negative_prompt}, blue artifacts, color bleeding, unnatural colors, mask edges, visible seams"
     seed = request.seed if request.seed else torch.randint(0, 2**32, (1,)).item()
     # faces = face_analysis_app.get(face_image)
-
     generated_image = ip_model.generate(pil_image=face_image, num_samples=1, num_inference_steps=request.num_inference_steps,
                            seed=seed, image=pose_image, mask_image=mask_image, strength=request.strength)[0]
     
@@ -320,9 +319,9 @@ async def img2img(
     }
     try:
     # Load images
-        base_img = Image.open(io.BytesIO(await base_image.read())).convert('RGB')
-        pose_img = Image.open(io.BytesIO(await pose_image.read())).convert('RGB')
-        mask_img = Image.open(io.BytesIO(await mask_image.read())).convert('RGB')
+        base_img = Image.open(io.BytesIO(await base_image.read())).resize((256, 256))
+        pose_img = Image.open(io.BytesIO(await pose_image.read())).resize((512, 768))
+        mask_img = Image.open(io.BytesIO(await mask_image.read())).resize((512, 768))
         request = Img2ImgRequest(
 
             prompt=prompt,
