@@ -4,7 +4,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 
 from pydantic import BaseModel
-from transformers import CLIPVisionModelWithProjection, CLIPImageProcessor
 from typing import Optional
 import torch
 from diffusers import LCMScheduler, UNet2DConditionModel ,StableDiffusionXLInpaintPipeline
