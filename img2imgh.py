@@ -110,8 +110,6 @@ def initialize_pipelines():
             unet=unet
         )
         pipe.cuda()
-        pipe.load_lora_weights('ntc-ai/SDXL-LoRA-slider.nice-hands', weight_name='nice hands.safetensors', adapter_name="nice hands")
-        pipe.set_adapters(["nice hands"], adapter_weights=[2.0])
         pipe.enable_xformers_memory_efficient_attention()
         pipe.enable_vae_slicing()
         pipe.enable_attention_slicing()
