@@ -100,7 +100,7 @@ def initialize_pipelines():
         ckpt = "sdxl_lightning_8step_unet.safetensors"
         
         # Base model path
-        base_model_path = 'stabilityai/stable-diffusion-xl-base-1.0'
+        base_model_path = 'RunDiffusion/Juggernaut-XL-v9'
         
         logger.info("Loading SDXL base pipeline...")
         # unet = UNet2DConditionModel.from_config(base_model_path, subfolder="unet").to("cuda", torch.float16)
