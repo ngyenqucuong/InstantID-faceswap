@@ -116,7 +116,9 @@ def initialize_pipelines():
         pipe.enable_vae_slicing()
         pipe.enable_attention_slicing()
         pipe.load_ip_adapter_instantid(face_adapter)
-        pipe.load_lora_weights(path='./checkpoints/perfectionStyle/perfection_style_v2d.safetensors')
+        pipe.load_lora_weights( "./checkpoints/perfectionStyle", weight_name="perfection_style_v2d.safetensors")
+        pipe.set_adapters("perfection style", adapter_weights=[1.0])
+
         pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config, timestep_spacing="trailing")
 
         # refiner
