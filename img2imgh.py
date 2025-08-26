@@ -103,19 +103,20 @@ def initialize_pipelines():
         base_model_path = 'stabilityai/stable-diffusion-xl-base-1.0'
         
         logger.info("Loading SDXL base pipeline...")
-        unet = UNet2DConditionModel.from_config(base_model_path, subfolder="unet").to("cuda", torch.float16)
-        unet.load_state_dict(load_file(hf_hub_download(repo, ckpt), device="cuda"))
+        # unet = UNet2DConditionModel.from_config(base_model_path, subfolder="unet").to("cuda", torch.float16)
+        # unet.load_state_dict(load_file(hf_hub_download(repo, ckpt), device="cuda"))
         pipe = StableDiffusionXLInstantIDPipeline.from_pretrained(
             base_model_path,
             controlnet=controlnet,
             torch_dtype=torch.float16,
-            unet=unet
+            # unet=unet
         )
         pipe.cuda()
         pipe.enable_xformers_memory_efficient_attention()
         pipe.enable_vae_slicing()
         pipe.enable_attention_slicing()
         pipe.load_ip_adapter_instantid(face_adapter)
+        pipe.load_lora_weights(path='./checkpoints/perfectionStyle/perfection_style_v2d.safetensors')
         pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config, timestep_spacing="trailing")
 
         # refiner
