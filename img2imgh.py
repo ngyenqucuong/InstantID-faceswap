@@ -122,12 +122,12 @@ def initialize_pipelines():
         pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config, timestep_spacing="trailing")
 
         # refiner
-        refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-        )
-        refiner = refiner.to("cuda")
-        refiner.unet = torch.compile(refiner.unet, mode="reduce-overhead", fullgraph=True)
-        refiner.enable_model_cpu_offload()
+        # refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
+        #     "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+        # )
+        # refiner = refiner.to("cuda")
+        # refiner.unet = torch.compile(refiner.unet, mode="reduce-overhead", fullgraph=True)
+        # refiner.enable_model_cpu_offload()
 
     except Exception as e:
         logger.error(f"Failed to initialize pipelines: {e}")
@@ -237,11 +237,11 @@ async def gen_img2img(job_id: str, face_image : Image.Image,pose_image: Image.Im
         generator=generator,
         nums_images_per_prompt=1,
     ).images[0]
-    refiner_image = refiner(request.prompt, image=image).images[0]
+    # refiner_image = refiner(request.prompt, image=image).images[0]
 
     filename = f"{job_id}_base.png"
     filepath = os.path.join(results_dir, filename)
-    refiner_image.save(filepath)
+    image.save(filepath)
         
     metadata = {
         "job_id": job_id,
