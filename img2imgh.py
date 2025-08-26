@@ -213,7 +213,7 @@ async def gen_img2img(job_id: str, face_image : Image.Image,pose_image: Image.Im
     pose_info = face_analysis_app.get(cv2.cvtColor(np.array(pose_image), cv2.COLOR_RGB2BGR))
     pose_info = sorted(pose_info, key=lambda x:(x['bbox'][2]-x['bbox'][0])*(x['bbox'][3]-x['bbox'][1]))[-1]
     pose_kps_control = draw_kps(pose_image, pose_info['kps'])
-    negative_prompt = f"{request.negative_prompt}, blue artifacts, color bleeding, unnatural colors, mask edges, visible seams"
+    negative_prompt = f"{request.negative_prompt}, blue artifacts, color bleeding, unnatural colors, mask edges, visible seams,bad hands, distorted fingers,ugly hands, creepy hands, unnatural hands, robotic hands, alien hands, cartoon hands, pixelated hands, blurry hands"
     seed = request.seed if request.seed else torch.randint(0, 2**32, (1,)).item()
     generator = torch.Generator(device='cuda').manual_seed(seed)
     image = pipe(
