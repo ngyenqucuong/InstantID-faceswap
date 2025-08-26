@@ -6,10 +6,11 @@ from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from typing import Optional
 import torch
-from diffusers import DDIMScheduler ,StableDiffusionControlNetInpaintPipeline,AutoencoderKL
+from diffusers import EulerDiscreteScheduler, UNet2DConditionModel
 from diffusers.models import ControlNetModel
-
-from PIL import Image ,ImageDraw
+from diffusers.utils import load_image
+from PIL import Image, ImageDraw
+import cv2
 import numpy as np
 import io
 import json
@@ -20,77 +21,100 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import logging
 from insightface.app import FaceAnalysis
-# from huggingface_hub import hf_hub_download
+from huggingface_hub import hf_hub_download,snapshot_download
 from contextlib import asynccontextmanager
-# from safetensors.torch import load_file
-from ip_adapter.ip_adapter_faceid import IPAdapterFaceID
+from safetensors.torch import load_file
 
-import cv2
+
+
+# Import custom pipeline
+from pipeline_stable_diffusion_xl_instantid import StableDiffusionXLInstantIDPipeline, draw_kps
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+torch.cuda.empty_cache()
+
+
+
+
+
+if not os.path.exists("./models/antelopev2/"):
+    snapshot_download(
+        repo_id="InstantX/InstantID", allow_patterns="/models/antelopev2/*", local_dir="./models/antelopev2/"
+    )
+    # run 'mv models/antelopev2/antelopev2/* models/antelopev2/' cmd
+    os.system("mv ./models/antelopev2/antelopev2/* ./models/antelopev2/")
+
+if not os.path.exists("./checkpoints/"):
+    # make dir 'ControlNetModel'
+    os.makedirs("./checkpoints/ControlNetModel", exist_ok=True)
+    hf_hub_download(
+        repo_id="InstantX/InstantID",
+        subfolder="ControlNetModel",
+        filename="config.json",
+        local_dir="./checkpoints"
+    )
+    
+    hf_hub_download(
+        repo_id="InstantX/InstantID",
+        subfolder="ControlNetModel",
+        filename="diffusion_pytorch_model.safetensors",
+        local_dir="./checkpoints"
+    )
+    hf_hub_download(
+        repo_id="InstantX/InstantID",
+        filename="ip-adapter.bin",
+        local_dir="./checkpoints"
+    )
+
 
 # Global variables for pipelines
 pipe = None
 face_analysis_app = None
 executor = ThreadPoolExecutor(max_workers=1)
-ip_model = None
 
 def initialize_pipelines():
     """Initialize the diffusion pipelines with InstantID and SDXL-Lightning - GPU optimized"""
-    global pipe, face_analysis_app,ip_model
+    global pipe, face_analysis_app
     
     try:
         # Clear CUDA cache before initialization
        
         logger.info("Loading face analysis model...")
-        face_analysis_app = FaceAnalysis(name='buffalo_l', providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
+        face_analysis_app = FaceAnalysis(name='antelopev2', root='./', providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
         face_analysis_app.prepare(ctx_id=0, det_size=(640, 640))
         
         # Path to InstantID models
+        face_adapter = './checkpoints/ip-adapter.bin'
+        controlnet_path = './checkpoints/ControlNetModel'
         
         # Load ControlNet
-        logger.info("Loading ControlNet...")        
-        # SDXL-Lightning LoRA path
-        repo = "ByteDance/Hyper-SD"
-        # Load SDXL-Lightning LoRA
-        ckpt = "Hyper-SD15-4steps-lora.safetensors" 
-        image_encoder_path = "models/image_encoder/"
-        # Base model path
-        base_model_path = "runwayml/stable-diffusion-v1-5"
-        ip_ckpt = "ip-adapter-faceid_sd15.bin"
-        controlnet_model_path = "lllyasviel/control_v11f1p_sd15_depth"
-        controlnet = ControlNetModel.from_pretrained(controlnet_model_path, torch_dtype=torch.float16)
-        logger.info("Loading SDXL base pipeline...")
-        vae_model_path = "stabilityai/sd-vae-ft-mse"
-        vae = AutoencoderKL.from_pretrained(vae_model_path).to(dtype=torch.float16)
-
+        logger.info("Loading ControlNet...")
+        controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16)
         
-        noise_scheduler = DDIMScheduler(
-            num_train_timesteps=1000,
-            beta_start=0.00085,
-            beta_end=0.012,
-            beta_schedule="scaled_linear",
-            clip_sample=False,
-            set_alpha_to_one=False,
-            steps_offset=1,
-        )
-        pipe = StableDiffusionControlNetInpaintPipeline.from_pretrained(
+        # SDXL-Lightning LoRA path
+        repo = "ByteDance/SDXL-Lightning"
+        ckpt = "sdxl_lightning_4step_unet.safetensors"
+        
+        # Base model path
+        base_model_path = 'stabilityai/stable-diffusion-xl-base-1.0'
+        
+        logger.info("Loading SDXL base pipeline...")
+        unet = UNet2DConditionModel.from_config(base_model_path, subfolder="unet").to("cuda", torch.float16)
+        unet.load_state_dict(load_file(hf_hub_download(repo, ckpt), device="cuda"))
+        pipe = StableDiffusionXLInstantIDPipeline.from_pretrained(
             base_model_path,
-            torch_dtype=torch.float16,
-            scheduler=noise_scheduler,
-            vae=vae,
-            variant="fp16",
-            feature_extractor=None,
             controlnet=controlnet,
-            safety_checker=None
+            torch_dtype=torch.float16,
+            unet=unet
         )
-        # pipe.load_lora_weights(hf_hub_download(repo, ckpt))
-        # pipe.fuse_lora()
-        ip_model = IPAdapterFaceID(pipe, ip_ckpt, 'cuda')
-
-
+        pipe.cuda()
+        pipe.enable_xformers_memory_efficient_attention()
+        pipe.enable_vae_slicing()
+        pipe.enable_attention_slicing()
+        pipe.load_ip_adapter_instantid(face_adapter)
+        pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config, timestep_spacing="trailing")
 
         
         
@@ -133,8 +157,6 @@ class Img2ImgRequest(BaseModel):
     ip_adapter_scale: float = 0.8  # Lower for InstantID
     controlnet_conditioning_scale: float = 0.8
     guidance_scale: float = 0.0  # Zero for LCM
-    detail_face: bool = False  # Whether to refine face details
-    num_inference_steps: int = 50  # Number of inference steps
 
 class JobStatus(BaseModel):
     job_id: str
@@ -150,84 +172,61 @@ jobs = {}
 results_dir = "results"
 os.makedirs(results_dir, exist_ok=True)
 
-# def resize_img(input_image, max_side=1280, min_side=1024, size=None, 
-#                pad_to_max_side=False, mode=Image.BILINEAR, base_pixel_number=64):
+def resize_img(input_image, max_side=1280, min_side=1024, size=None, 
+               pad_to_max_side=False, mode=Image.BILINEAR, base_pixel_number=64):
 
-#     w, h = input_image.size
-#     if size is not None:
-#         w_resize_new, h_resize_new = size
-#     else:
-#         ratio = min_side / min(h, w)
-#         w, h = round(ratio*w), round(ratio*h)
-#         ratio = max_side / max(h, w)
-#         input_image = input_image.resize([round(ratio*w), round(ratio*h)], mode)
-#         w_resize_new = (round(ratio * w) // base_pixel_number) * base_pixel_number
-#         h_resize_new = (round(ratio * h) // base_pixel_number) * base_pixel_number
-#     input_image = input_image.resize([w_resize_new, h_resize_new], mode)
+    w, h = input_image.size
+    if size is not None:
+        w_resize_new, h_resize_new = size
+    else:
+        ratio = min_side / min(h, w)
+        w, h = round(ratio*w), round(ratio*h)
+        ratio = max_side / max(h, w)
+        input_image = input_image.resize([round(ratio*w), round(ratio*h)], mode)
+        w_resize_new = (round(ratio * w) // base_pixel_number) * base_pixel_number
+        h_resize_new = (round(ratio * h) // base_pixel_number) * base_pixel_number
+    input_image = input_image.resize([w_resize_new, h_resize_new], mode)
 
-#     if pad_to_max_side:
-#         res = np.ones([max_side, max_side, 3], dtype=np.uint8) * 255
-#         offset_x = (max_side - w_resize_new) // 2
-#         offset_y = (max_side - h_resize_new) // 2
-#         res[offset_y:offset_y+h_resize_new, offset_x:offset_x+w_resize_new] = np.array(input_image)
-#         input_image = Image.fromarray(res)
-#     return input_image
+    if pad_to_max_side:
+        res = np.ones([max_side, max_side, 3], dtype=np.uint8) * 255
+        offset_x = (max_side - w_resize_new) // 2
+        offset_y = (max_side - h_resize_new) // 2
+        res[offset_y:offset_y+h_resize_new, offset_x:offset_x+w_resize_new] = np.array(input_image)
+        input_image = Image.fromarray(res)
+    return input_image
 
 
 
-def detail_face(generated_image, face_image: Image.Image):
-    img_array = np.array(generated_image)[:, :, ::-1]  # Convert PIL to BGR for InsightFace
-    faces = face_analysis_app.get(img_array)
-    if len(faces) > 0:
-        for face in faces:
-            bbox = face.bbox.astype(int)
-            x1, y1, x2, y2 = bbox
-            
-            # Crop face area (convert back to RGB for PIL)
-            # face_crop = generated_image.crop((x1, y1, x2, y2))
-            
-            # Create mask for face area
-            face_mask = Image.new("L", generated_image.size, 0)
-            face_mask_draw = ImageDraw.Draw(face_mask)
-            face_mask_draw.rectangle((x1, y1, x2, y2), fill=255)
-            
-            # Refine face with inpainting (higher steps for detail)
-            refined_face = pipe(
-                prompt="high detail face, sharp eyes, smooth skin",  # Detail-focused prompt
-                image=generated_image,
-                mask_image=face_mask,
-                ip_adapter_image=face_image,  # Keep face consistency
-                num_inference_steps=10,  # More steps for detailer
-                guidance_scale=7.5,
-                strength=0.5
-            ).images[0]
-            
-            # Paste refined face back
-            generated_image.paste(refined_face.crop((x1, y1, x2, y2)), (x1, y1))
-    return generated_image
 
-async def gen_img2img(job_id: str, face_image : Image.Image,pose_image: Image.Image,mask_image: Image.Image,request: Img2ImgRequest):
-    negative_prompt = f"{request.negative_prompt}, blue artifacts, color bleeding, unnatural colors, mask edges, visible seams, hair"
+
+async def gen_img2img(job_id: str, face_image : Image.Image,pose_image: Image.Image,request: Img2ImgRequest):
+    face_image = resize_img(face_image)
+    face_info = face_analysis_app.get(cv2.cvtColor(np.array(face_image), cv2.COLOR_RGB2BGR))
+    face_info = sorted(face_info, key=lambda x:(x['bbox'][2]-x['bbox'][0])*(x['bbox'][3]-x['bbox'][1]))[-1] # only use the maximum face
+    face_emb = face_info['embedding']
+    # face_kps = draw_kps(face_image, face_info['kps'])
+    pose_info = face_analysis_app.get(cv2.cvtColor(np.array(pose_image), cv2.COLOR_RGB2BGR))
+    pose_info = sorted(pose_info, key=lambda x:(x['bbox'][2]-x['bbox'][0])*(x['bbox'][3]-x['bbox'][1]))[-1]
+    pose_kps_control = draw_kps(pose_image, pose_info['kps'])
+    negative_prompt = f"{request.negative_prompt}, blue artifacts, color bleeding, unnatural colors, mask edges, visible seams"
     seed = request.seed if request.seed else torch.randint(0, 2**32, (1,)).item()
-    cv2image = cv2.cvtColor(np.array(face_image), cv2.COLOR_RGB2BGR)
-    faces = face_analysis_app.get(cv2image)
-    faceid_embeds = torch.from_numpy(faces[0].normed_embedding).unsqueeze(0)
-    pose_image_cv2  = np.array(pose_image)
-
-    canny_image = cv2.Canny(pose_image_cv2, 100, 200)
-    canny_image = canny_image[:, :, None]
-    canny_image = np.concatenate([canny_image, canny_image, canny_image], axis=2)
-    canny_image = Image.fromarray(canny_image)
-
-    generated_image = ip_model.generate(prompt=request.prompt, negative_prompt=negative_prompt, num_samples=1, faceid_embeds=faceid_embeds, num_inference_steps=request.num_inference_steps,
-                           seed=seed, image=pose_image,control_image=canny_image, mask_image=mask_image, strength=request.strength)[0]
-    
-
-    # if request.detail_face:
-    #     generated_image = detail_face(generated_image, face_image)
+    generator = torch.Generator(device='cuda').manual_seed(seed)
+    image = pipe(
+        prompt=request.prompt,
+        negative_prompt=negative_prompt,
+        image_embeds=face_emb,
+        image=pose_kps_control,
+        control_image=pose_kps_control,
+        controlnet_conditioning_scale=request.controlnet_conditioning_scale,
+        ip_adapter_scale=request.ip_adapter_scale,
+        num_inference_steps=4,
+        guidance_scale=request.guidance_scale,
+        strength=request.strength,
+        generator=generator,
+    ).images[0]
     filename = f"{job_id}_base.png"
     filepath = os.path.join(results_dir, filename)
-    generated_image.save(filepath)
+    image.save(filepath)
         
     metadata = {
         "job_id": job_id,
@@ -309,14 +308,11 @@ async def health_check():
 async def img2img(
     base_image: UploadFile = File(...),
     pose_image: UploadFile = File(...),
-    mask_image: UploadFile = File(...),
     prompt: str = Form(""),
     negative_prompt: str = Form("(lowres, low quality, worst quality:1.2), (text:1.2), watermark, painting, drawing, illustration, glitch, deformed, mutated, cross-eyed, ugly, disfigured"),
     strength: float = Form(0.85),
     ip_adapter_scale: float = Form(0.8),  # Lower for InstantID
     controlnet_conditioning_scale: float = Form(0.8),
-    num_inference_steps: int = Form(50),  # Number of inference steps
-    detail_face: bool = Form(False),
     guidance_scale: float = Form(0),  # Zero for LCM
     seed: Optional[int] = Form(None),
     
@@ -330,11 +326,11 @@ async def img2img(
         "created_at": datetime.now(),
         "type": "head_swap"
     }
+    
     try:
-    # Load images
-        base_img = Image.open(io.BytesIO(await base_image.read())).resize((256, 256))
-        pose_img = Image.open(io.BytesIO(await pose_image.read())).resize((512, 768))
-        mask_img = Image.open(io.BytesIO(await mask_image.read())).resize((512, 768))
+        # Load images
+        base_img = Image.open(io.BytesIO(await base_image.read())).convert('RGB')
+        pose_img = Image.open(io.BytesIO(await pose_image.read())).convert('RGB')
         request = Img2ImgRequest(
 
             prompt=prompt,
@@ -344,22 +340,19 @@ async def img2img(
             ip_adapter_scale=ip_adapter_scale,
             controlnet_conditioning_scale=controlnet_conditioning_scale,
             guidance_scale=guidance_scale,
-            detail_face=detail_face,
-            num_inference_steps=num_inference_steps
-            
+           
         )
         # Start background task
         loop = asyncio.get_event_loop()
         loop.run_in_executor(executor, lambda: asyncio.run(
-            gen_img2img(job_id, base_img, pose_img, mask_img, request)
+            gen_img2img(job_id, base_img, pose_img, request)
         ))
         
         return {"job_id": job_id, "status": "pending"}
     except Exception as e:
-        logger.error(f"Error processing img2img request: {e}")
         jobs[job_id]["status"] = "failed"
         jobs[job_id]["error_message"] = str(e)
-        return {"job_id": job_id, "status": "failed", "error_message": str(e)}
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.get("/job/{job_id}")
