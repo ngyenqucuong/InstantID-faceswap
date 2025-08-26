@@ -227,6 +227,7 @@ async def gen_img2img(job_id: str, face_image : Image.Image,pose_image: Image.Im
         guidance_scale=request.guidance_scale,
         strength=request.strength,
         generator=generator,
+        nums_images_per_prompt=1,
     ).images[0]
     filename = f"{job_id}_base.png"
     filepath = os.path.join(results_dir, filename)
