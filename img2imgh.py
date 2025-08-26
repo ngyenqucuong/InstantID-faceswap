@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from typing import Optional
 import torch
-from diffusers import EulerDiscreteScheduler, UNet2DConditionModel,StableDiffusionXLImg2ImgPipeline
+from diffusers import EulerDiscreteScheduler, UNet2DConditionModel,LCMScheduler
 from diffusers.models import ControlNetModel
 from diffusers.utils import load_image
 from PIL import Image, ImageDraw
@@ -100,7 +100,7 @@ def initialize_pipelines():
         ckpt = "sdxl_lightning_8step_unet.safetensors"
         
         # Base model path
-        base_model_path = 'RunDiffusion/Juggernaut-XL-v9'
+        base_model_path = 'wangqixun/YamerMIX_v8'
         
         logger.info("Loading SDXL base pipeline...")
         # unet = UNet2DConditionModel.from_config(base_model_path, subfolder="unet").to("cuda", torch.float16)
@@ -117,9 +117,10 @@ def initialize_pipelines():
         pipe.enable_attention_slicing()
         pipe.load_ip_adapter_instantid(face_adapter)
         pipe.load_lora_weights( "./checkpoints/perfectionStyle", weight_name="perfection_style_v2d.safetensors", adapter_name="perfection style")
-        pipe.set_adapters("perfection style", adapter_weights=[1.0])
+        pipe.fuse_lora()
 
-        pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config, timestep_spacing="trailing")
+        # pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config, timestep_spacing="trailing")
+        pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
         # refiner
         # refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
