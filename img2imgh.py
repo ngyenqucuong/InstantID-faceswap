@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from typing import Optional
 import torch
-from diffusers import EulerDiscreteScheduler, UNet2DConditionModel
+from diffusers import EulerDiscreteScheduler, UNet2DConditionModel,StableDiffusionXLImg2ImgPipeline
 from diffusers.models import ControlNetModel
 from diffusers.utils import load_image
 from PIL import Image, ImageDraw
@@ -24,6 +24,7 @@ from insightface.app import FaceAnalysis
 from huggingface_hub import hf_hub_download,snapshot_download
 from contextlib import asynccontextmanager
 from safetensors.torch import load_file
+
 
 
 
@@ -72,11 +73,12 @@ if not os.path.exists("./checkpoints/"):
 # Global variables for pipelines
 pipe = None
 face_analysis_app = None
+refiner = None
 executor = ThreadPoolExecutor(max_workers=1)
 
 def initialize_pipelines():
     """Initialize the diffusion pipelines with InstantID and SDXL-Lightning - GPU optimized"""
-    global pipe, face_analysis_app
+    global pipe, face_analysis_app,refiner
     
     try:
         # Clear CUDA cache before initialization
@@ -115,12 +117,15 @@ def initialize_pipelines():
         pipe.enable_attention_slicing()
         pipe.load_ip_adapter_instantid(face_adapter)
         pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config, timestep_spacing="trailing")
-        
 
+        # refiner
+        refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+        )
+        refiner = refiner.to("cuda")
+        refiner.unet = torch.compile(refiner.unet, mode="reduce-overhead", fullgraph=True)
+        refiner.enable_model_cpu_offload()
 
-
-        
-        
     except Exception as e:
         logger.error(f"Failed to initialize pipelines: {e}")
         raise
@@ -160,6 +165,7 @@ class Img2ImgRequest(BaseModel):
     ip_adapter_scale: float = 0.8  # Lower for InstantID
     controlnet_conditioning_scale: float = 0.8
     guidance_scale: float = 0.0  # Zero for LCM
+    num_inference_steps: int = 8
 
 class JobStatus(BaseModel):
     job_id: str
@@ -222,15 +228,17 @@ async def gen_img2img(job_id: str, face_image : Image.Image,pose_image: Image.Im
         control_image=pose_kps_control,
         controlnet_conditioning_scale=request.controlnet_conditioning_scale,
         ip_adapter_scale=request.ip_adapter_scale,
-        num_inference_steps=8,
+        num_inference_steps=request.num_inference_steps,
         guidance_scale=request.guidance_scale,
         strength=request.strength,
         generator=generator,
         nums_images_per_prompt=1,
     ).images[0]
+    refiner_image = refiner(request.prompt, image=image).images[0]
+
     filename = f"{job_id}_base.png"
     filepath = os.path.join(results_dir, filename)
-    image.save(filepath)
+    refiner_image.save(filepath)
         
     metadata = {
         "job_id": job_id,
@@ -317,6 +325,7 @@ async def img2img(
     strength: float = Form(0.85),
     ip_adapter_scale: float = Form(0.8),  # Lower for InstantID
     controlnet_conditioning_scale: float = Form(0.8),
+    num_inference_steps: int = Form(8),
     guidance_scale: float = Form(0),  # Zero for LCM
     seed: Optional[int] = Form(None),
     
@@ -336,7 +345,7 @@ async def img2img(
         base_img = Image.open(io.BytesIO(await base_image.read())).convert('RGB')
         pose_img = Image.open(io.BytesIO(await pose_image.read())).convert('RGB')
         request = Img2ImgRequest(
-
+            num_inference_steps=num_inference_steps,
             prompt=prompt,
             negative_prompt=negative_prompt,
             seed=seed,
