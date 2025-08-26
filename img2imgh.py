@@ -225,7 +225,7 @@ async def gen_img2img(job_id: str, face_image : Image.Image,pose_image: Image.Im
     generator = torch.Generator(device='cuda').manual_seed(seed)
     image = pipe(
         prompt=request.prompt,
-        negative_prompt=negative_prompt,
+        # negative_prompt=negative_prompt,
         image_embeds=face_emb,
         image=pose_kps_control,
         control_image=pose_kps_control,
