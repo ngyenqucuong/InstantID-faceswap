@@ -95,7 +95,7 @@ def initialize_pipelines():
         
         # SDXL-Lightning LoRA path
         repo = "ByteDance/SDXL-Lightning"
-        ckpt = "sdxl_lightning_4step_unet.safetensors"
+        ckpt = "sdxl_lightning_8step_unet.safetensors"
         
         # Base model path
         base_model_path = 'stabilityai/stable-diffusion-xl-base-1.0'
@@ -110,13 +110,14 @@ def initialize_pipelines():
             unet=unet
         )
         pipe.cuda()
+        pipe.load_lora_weights('ntc-ai/SDXL-LoRA-slider.nice-hands', weight_name='nice hands.safetensors', adapter_name="nice hands")
+        pipe.set_adapters(["nice hands"], adapter_weights=[2.0])
         pipe.enable_xformers_memory_efficient_attention()
         pipe.enable_vae_slicing()
         pipe.enable_attention_slicing()
         pipe.load_ip_adapter_instantid(face_adapter)
         pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config, timestep_spacing="trailing")
-        pipe.load_lora_weights('ntc-ai/SDXL-LoRA-slider.nice-hands', weight_name='nice hands.safetensors', adapter_name="nice hands")
-        pipe.set_adapters(["nice hands"], adapter_weights=[2.0])
+        
 
 
 
