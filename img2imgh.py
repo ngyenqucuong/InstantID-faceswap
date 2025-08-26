@@ -100,16 +100,16 @@ def initialize_pipelines():
         ckpt = "sdxl_lightning_8step_unet.safetensors"
         
         # Base model path
-        base_model_path = 'wangqixun/YamerMIX_v8'
+        base_model_path = 'stabilityai/stable-diffusion-xl-base-1.0'
         
         logger.info("Loading SDXL base pipeline...")
-        # unet = UNet2DConditionModel.from_config(base_model_path, subfolder="unet").to("cuda", torch.float16)
-        # unet.load_state_dict(load_file(hf_hub_download(repo, ckpt), device="cuda"))
+        unet = UNet2DConditionModel.from_config(base_model_path, subfolder="unet").to("cuda", torch.float16)
+        unet.load_state_dict(load_file(hf_hub_download(repo, ckpt), device="cuda"))
         pipe = StableDiffusionXLInstantIDPipeline.from_pretrained(
             base_model_path,
             controlnet=controlnet,
             torch_dtype=torch.float16,
-            # unet=unet
+            unet=unet
         )
         pipe.cuda()
         pipe.enable_xformers_memory_efficient_attention()
@@ -119,8 +119,8 @@ def initialize_pipelines():
         pipe.load_lora_weights( "./checkpoints/perfectionStyle", weight_name="perfection_style_v2d.safetensors", adapter_name="perfection style")
         pipe.fuse_lora()
 
-        # pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config, timestep_spacing="trailing")
-        pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
+        pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config, timestep_spacing="trailing")
+        # pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
         # refiner
         # refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
