@@ -115,6 +115,10 @@ def initialize_pipelines():
         pipe.enable_attention_slicing()
         pipe.load_ip_adapter_instantid(face_adapter)
         pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config, timestep_spacing="trailing")
+        pipe.load_lora_weights('ntc-ai/SDXL-LoRA-slider.nice-hands', weight_name='nice hands.safetensors', adapter_name="nice hands")
+        pipe.set_adapters(["nice hands"], adapter_weights=[2.0])
+
+
 
         
         
